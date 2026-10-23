@@ -24,6 +24,3 @@ Mail Code Copy finds login and verification codes in your Fastmail inbox and let
 
 ## Permissions
 See the README for why each permission is requested.
-
-## Contact
-[Your name / email]
