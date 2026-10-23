@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Fastmail OTP",
+  "version": "0.1.0",
+  "description": "Polls Fastmail via JMAP for one-time codes and lets you copy them from a notification.",
+  "permissions": ["storage", "alarms", "notifications", "offscreen", "clipboardWrite"],
+  "host_permissions": ["https://api.fastmail.com/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Fastmail OTP" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
+}
