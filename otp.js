@@ -38,3 +38,9 @@ export function extractCode(text) {
     .map((m) => m[0]);
   return cands.find((c) => c.length === 6) ?? cands[0] ?? null;
 }
+
+// "482913" -> "••••13"; shorter codes keep only the last digit.
+export function maskCode(code) {
+  const keep = code.length >= 6 ? 2 : 1;
+  return "•".repeat(code.length - keep) + code.slice(-keep);
+}

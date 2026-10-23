@@ -1,4 +1,4 @@
-import { extractCode, htmlToText } from "../otp.js";
+import { extractCode, htmlToText, maskCode } from "../otp.js";
 
 const backblazeHtml = `<html><head><title>Backblaze Email</title></head><body>
 <p>This Backblaze Authorization code is required for security purposes.</p>
@@ -34,6 +34,9 @@ let failed = 0;
 for (const [name, text, want] of cases) {
   const got = extractCode(text);
   if (got !== want) { failed++; console.log(`FAIL ${name}: got ${got}, want ${want}`); }
+}
+for (const [c, want] of [["482913", "••••13"], ["7731", "•••1"], ["90412", "••••2"]]) {
+  if (maskCode(c) !== want) { failed++; console.log(`FAIL mask ${c}: ${maskCode(c)}`); }
 }
 console.log(`${cases.length - failed}/${cases.length} passed`);
 process.exit(failed ? 1 : 0);
