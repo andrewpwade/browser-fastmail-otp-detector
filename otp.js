@@ -1,4 +1,4 @@
-const KEYWORDS = /(code|otp|passcode|\bpin\b|verif|one[- ]time|security|sign[- ]?in|log[- ]?in|2fa|authenticat|confirm)/i;
+const KEYWORDS = /((?<![a-z])(?:code|otp)|passcode|\bpin\b|verif|one[- ]time|security|sign[- ]?in|log[- ]?in|2fa|authenticat|confirm)/i;
 const isYear = (s) => /^(19|20)\d\d$/.test(s);
 
 export function htmlToText(html) {
@@ -13,7 +13,7 @@ export function htmlToText(html) {
     .trim();
 }
 
-const NOT_OTP = /(zip|postal|post|promo(?:tion(?:al)?)?|coupon|discount|area|country|tracking|order|reference|ref|invoice|gift)\s*(?:code)?\W*$/i;
+const NOT_OTP = /\b(zip|postal|post|promo(?:tion(?:al)?)?|coupon|discount|area|country|tracking|order|reference|ref|invoice|gift)\s*(?:code)?\W*$/i;
 const blocked = (text, idx) => NOT_OTP.test(text.slice(Math.max(0, idx - 30), idx));
 
 export function extractCode(text) {
@@ -21,7 +21,7 @@ export function extractCode(text) {
   text = text.replace(/https?:\/\/\S+/g, " ");
 
   // Strong signal: a number right after "code" / "OTP" / "passcode" / "PIN". No keyword gate needed.
-  const re = /(?:code|otp|passcode|\bpin\b)\b[^\d]{0,40}?(\d{3}[- ]\d{3}|\d{4,8})\b/gi;
+  const re = /(?<![a-z])(?:code|otp|passcode|\bpin\b)\b[^\d]{0,40}?(\d{3}[- ]\d{3}|\d{4,8})\b/gi;
   for (const m of text.matchAll(re)) {
     const c = m[1].replace(/\D/g, "");
     if (isYear(c) || blocked(text, m.index)) continue;
@@ -43,4 +43,10 @@ export function extractCode(text) {
 export function maskCode(code) {
   const keep = code.length >= 6 ? 2 : 1;
   return "•".repeat(code.length - keep) + code.slice(-keep);
+}
+
+// Mask `code` wherever it appears in `text`, including spaced/hyphenated forms like "123-456".
+export function maskIn(text, code) {
+  const re = new RegExp(`(?<!\\d)${code.split("").join("[- ]?")}(?!\\d)`, "g");
+  return text.replace(re, maskCode(code));
 }

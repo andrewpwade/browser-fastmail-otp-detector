@@ -1,12 +1,21 @@
 const SESSION_URL = "https://api.fastmail.com/jmap/session";
 const MAIL = "urn:ietf:params:jmap:mail";
 
+// JMAP dates are UTC with no fractional seconds, e.g. 2026-10-23T12:00:00Z.
+export const utcNow = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
 async function req(url, token, body) {
-  const res = await fetch(url, {
-    method: body ? "POST" : "GET",
-    headers: { Authorization: `Bearer ${token}`, ...(body && { "Content-Type": "application/json" }) },
-    body: body && JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: body ? "POST" : "GET",
+      headers: { Authorization: `Bearer ${token}`, ...(body && { "Content-Type": "application/json" }) },
+      body: body && JSON.stringify(body),
+      signal: AbortSignal.timeout(20000), // a hung request must not stall every later poll
+    });
+  } catch (e) {
+    throw new Error(e.name === "TimeoutError" ? "request timed out" : e.message);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 ? " (bad token?)" : ""}`);
   return res.json();
 }
@@ -15,7 +24,9 @@ export async function getSession(token) {
   const s = await req(SESSION_URL, token);
   const eventSourceUrl = s.eventSourceUrl
     ?.replace("{types}", "Email").replace("{closeafter}", "no").replace("{ping}", "20");
-  return { apiUrl: s.apiUrl, accountId: s.primaryAccounts[MAIL], eventSourceUrl };
+  const accountId = s.primaryAccounts?.[MAIL];
+  if (!accountId) throw new Error("this token has no mail access");
+  return { apiUrl: s.apiUrl, accountId, eventSourceUrl };
 }
 
 export async function listMailboxes(token, { apiUrl, accountId }) {

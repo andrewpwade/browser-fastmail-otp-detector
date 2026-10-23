@@ -1,7 +1,6 @@
 import { maskCode } from "./otp.js";
+import { FRESH_MS, KEEP_MS } from "./constants.js";
 const $ = (id) => document.getElementById(id);
-const FRESH_MS = 10 * 60 * 1000;
-const KEEP_MS = 60 * 60 * 1000;
 
 function ago(t) {
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -55,16 +54,12 @@ async function render() {
   $("dot").classList.toggle("err", isErr || !token);
   $("banner").replaceChildren();
   if (isErr) $("banner").append(el("div", "banner", status.replace(/^Error: /, "Can't reach Fastmail: ")));
-  $("foot").textContent = token && !isErr ? "Watching your inbox live" : "";
+  $("foot").textContent = token && !isErr ? "Watching your inbox" : "";
 
   if (!token) {
     const b = el("button", "btn", "Connect Fastmail");
     b.onclick = () => chrome.runtime.openOptionsPage();
     list.append(empty("🔑", "Let's get you set up", "Add a Fastmail token so codes can show up here.", b));
-    return;
-  }
-  if (!codes.length) {
-    list.append(empty("📬", "Waiting for a code…", "When a login code lands in your inbox, it'll appear here and pop up as a notification."));
     return;
   }
   const recent = codes.filter((c) => Date.now() - c.at < KEEP_MS);
@@ -113,6 +108,11 @@ $("refresh").onclick = async (e) => {
   await chrome.runtime.sendMessage({ type: "poll" });
   e.target.textContent = "↻";
 };
-chrome.storage.onChanged.addListener(render);
+// Re-render only when something visible changed, so a routine poll doesn't re-hide a revealed code.
+const errored = (s) => !!s?.startsWith("Error");
+chrome.storage.onChanged.addListener((c) => {
+  if (c.codes || c.token || (c.status && errored(c.status.newValue) !== errored(c.status.oldValue))) render();
+});
+chrome.storage.local.set({ viewedAt: Date.now() }); // opening the popup counts as seeing new codes
 chrome.action.setBadgeText({ text: "" });
 render();

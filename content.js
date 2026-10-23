@@ -21,7 +21,7 @@
     host.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 220))}px`;
   }
 
-  function show(els, offer) {
+  function show(field, els, offer) {
     hide();
     host = document.createElement("div");
     host.style.cssText = "all:initial;position:fixed;z-index:2147483647";
@@ -44,6 +44,7 @@
     for (const b of [fillBtn, x]) b.addEventListener("mousedown", (e) => e.preventDefault());
     fillBtn.addEventListener("click", async (e) => {
       if (!e.isTrusted) return; // ignore clicks scripted by the page
+      if (document.activeElement !== field || !F.onScreen(field)) return hide();
       const r = await ask({ type: "claim", id: offer.id });
       if (r?.code) F.fillEls(els, r.code);
       hide();
@@ -61,11 +62,11 @@
 
   async function onFocus(el) {
     const t = F.targetFor(el, false);
-    if (!t) return;
+    if (!t || !F.onScreen(el)) return;
     const offer = await ask({ type: "latest" });
     if (!offer || offer.id === dismissed) return;
     if (document.activeElement !== el) return; // focus moved while we were asking
-    show(t.els, offer);
+    show(el, t.els, offer);
   }
 
   addEventListener("focusin", (e) => onFocus(e.target), true);

@@ -27,5 +27,15 @@ t("fires input+change events", '<input name="otp">', () => {
 t("maxlength respected", '<input name="otp" maxlength=4>', 0, () => v("input") === "1234");
 t("hidden field ignored", '<input name="otp" style="display:none">', 0, (r) => r === false);
 t("targetFor focused hinted", '<input name="code">', () => F.targetFor(document.querySelector("input"), false), (r) => r?.els.length === 1);
+t("cvc field ignored", '<input name="cvc" autocomplete="cc-csc">', 0, (r) => r === false);
+t("country_code ignored", '<input name="country_code">', 0, (r) => r === false);
+t("explicit never fills a password box", '<input type="password" name="pw">', () => { document.querySelector("input").focus(); return F.fill("123456", true); },
+  (r) => r === false && v("input") === "");
+t("onScreen: normal field", '<input name="otp">', () => F.onScreen(document.querySelector("input")), (r) => r === true);
+t("onScreen: opacity 0", '<input name="otp" style="opacity:0">', () => F.onScreen(document.querySelector("input")), (r) => r === false);
+t("onScreen: parent transparent", '<div style="opacity:0"><input name="otp"></div>', () => F.onScreen(document.querySelector("input")), (r) => r === false);
+t("onScreen: off screen", '<input name="otp" style="position:fixed;left:-500px">', () => F.onScreen(document.querySelector("input")), (r) => r === false);
+t("onScreen: covered", '<input name="otp" style="position:fixed;top:10px;left:10px"><div style="position:fixed;top:0;left:0;width:300px;height:100px;background:red"></div>',
+  () => F.onScreen(document.querySelector("input")), (r) => r === false);
 document.getElementById("out").textContent = res.join("\n");
 </script>
