@@ -1,4 +1,4 @@
-import { getSession, recentEmails } from "./jmap.js";
+import { getSession, listMailboxes, recentEmails } from "./jmap.js";
 import { extractCode, htmlToText } from "./otp.js";
 
 const ALARM = "poll";
@@ -36,13 +36,18 @@ function bodyText(m) {
 }
 
 async function doPoll() {
-  const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes"]);
+  const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds"]);
   if (!st.token) return setStatus("No API token set");
   try {
     const session = st.session ?? (await getSession(st.token));
+    if (!session.inboxId) {
+      session.inboxId = (await listMailboxes(st.token, session)).find((x) => x.role === "inbox")?.id;
+      if (!session.inboxId) throw new Error("no Inbox found");
+    }
+    const mailboxIds = st.mailboxIds?.length ? st.mailboxIds : [session.inboxId];
     const since = st.since ?? new Date().toISOString();
     const seen = new Set(st.seen ?? []);
-    const emails = await recentEmails(st.token, session, since);
+    const emails = await recentEmails(st.token, session, since, mailboxIds);
     const codes = st.codes ?? [];
     let newest = since;
 

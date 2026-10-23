@@ -11,6 +11,7 @@ ol{padding-left:20px;margin:0 0 16px}li{margin-bottom:6px}
 input{flex:1;min-width:0;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
 input:focus{outline:2px solid var(--accent);border-color:transparent}
 #msg{margin-top:12px;min-height:20px}.ok{color:var(--ok)}.err{color:var(--err)}
+label.box{display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer}
 small{color:var(--muted);display:block;margin-top:14px}
 </style>
 <main>
@@ -29,6 +30,11 @@ small{color:var(--muted);display:block;margin-top:14px}
     <div class="row" style="margin-top:10px"><button class="btn" id="save">Connect</button></div>
     <div id="msg"></div>
     <small>Your token stays in this browser and is only sent to Fastmail. The extension reads just the subject and text of new messages.</small>
+  </div>
+  <div class="card" id="folders" hidden style="margin-top:16px">
+    <b>Folders to watch</b>
+    <p class="sub" style="margin:2px 0 10px">Your Inbox is watched by default. Tick others if you have rules that file mail elsewhere.</p>
+    <div id="boxes"></div>
   </div>
 </main>
 <script type="module" src="options.js"></script>

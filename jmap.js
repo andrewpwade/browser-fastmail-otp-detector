@@ -16,12 +16,26 @@ export async function getSession(token) {
   return { apiUrl: s.apiUrl, accountId: s.primaryAccounts[MAIL] };
 }
 
-// Emails received at/after `since` (ISO string), newest first.
-export async function recentEmails(token, { apiUrl, accountId }, since) {
+export async function listMailboxes(token, { apiUrl, accountId }) {
+  const r = await req(apiUrl, token, {
+    using: ["urn:ietf:params:jmap:core", MAIL],
+    methodCalls: [["Mailbox/get", { accountId, properties: ["id", "name", "role", "parentId", "sortOrder"] }, "m"]],
+  });
+  const m = r.methodResponses[0];
+  if (m[0] === "error") throw new Error(m[1].type);
+  return m[1].list;
+}
+
+// Emails in any of `mailboxIds` received at/after `since` (ISO string), newest first.
+export async function recentEmails(token, { apiUrl, accountId }, since, mailboxIds) {
+  const filter = {
+    operator: "AND",
+    conditions: [{ after: since }, { operator: "OR", conditions: mailboxIds.map((id) => ({ inMailbox: id })) }],
+  };
   const r = await req(apiUrl, token, {
     using: ["urn:ietf:params:jmap:core", MAIL],
     methodCalls: [
-      ["Email/query", { accountId, filter: { after: since }, sort: [{ property: "receivedAt", isAscending: false }], limit: 10 }, "q"],
+      ["Email/query", { accountId, filter, sort: [{ property: "receivedAt", isAscending: false }], limit: 10 }, "q"],
       ["Email/get", {
         accountId,
         "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
