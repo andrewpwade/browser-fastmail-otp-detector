@@ -126,8 +126,8 @@ function updateBadge(codes) {
 function notify(c) {
   chrome.notifications.create(`otp:${c.id}`, {
     type: "basic",
-    iconUrl: "icon.png",
-    title: `Code: ${c.code}`,
+    iconUrl: "icons/128.png",
+    title: `Login code: ${c.code}`,
     message: `${c.from} — ${c.subject}`,
     buttons: [{ title: "Copy" }],
     requireInteraction: true,
@@ -137,7 +137,7 @@ function notify(c) {
 async function copy(text) {
   if (!(await chrome.offscreen.hasDocument())) {
     await chrome.offscreen.createDocument({
-      url: "offscreen.html", reasons: ["CLIPBOARD"], justification: "Copy OTP code to clipboard",
+      url: "offscreen.html", reasons: ["CLIPBOARD"], justification: "Copy a login code to the clipboard when the user clicks a notification",
     });
   }
   await chrome.runtime.sendMessage({ target: "offscreen", text });
