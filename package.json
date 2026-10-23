@@ -1,0 +1,14 @@
+{
+  "name": "mail-code-copy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser extension that copies login codes from a Fastmail inbox.",
+  "scripts": {
+    "check": "node --check background.js && node --check constants.js && node --check content.js && node --check fill.js && node --check jmap.js && node --check offscreen.js && node --check options.js && node --check otp.js && node --check popup.js",
+    "test": "node tests/otp.test.mjs && node tests/stream.test.mjs && sh tests/fill.sh",
+    "build": "./build.sh",
+    "lint": "npm run build && npx --yes web-ext lint --source-dir dist/firefox"
+  },
+  "license": "MIT"
+}

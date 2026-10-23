@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Tests (code detection, push stream, field filling in headless Chrome)
+        run: npm test
+
+      - name: Validate manifests
+        run: |
+          python3 -c "import json; [json.load(open(f)) for f in ('manifest.json', 'manifest.firefox.json')]"
+
+      - name: Build both browsers
+        run: npm run build
+
+      - name: Lint the Firefox build
+        run: npx --yes web-ext lint --source-dir dist/firefox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mail-code-copy
+          path: dist/*.zip
