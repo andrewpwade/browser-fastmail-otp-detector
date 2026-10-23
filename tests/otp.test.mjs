@@ -5,6 +5,30 @@ const storeboxHtml = `<html><head><title>Storebox Email</title></head><body>
 <h3>Storebox Authorization Code: <span style="color:blue">716052</span></h3>
 Code expires in 20 minutes. <a href="https://x.com/2026">www</a> &copy; 2026</body></html>`;
 
+const loginNotice = `Subject: Storebox Account Login Notification
+
+This is a notification about your Storebox account.
+
+Hi there,
+
+Someone (hopefully you) just logged in to your Storebox account.
+
+Sign In Details:
+
+Browser/5.0 (X11; Linux x86_64) Engine/537.36 (KHTML) Client/156.0.0.0 Web/537.36
+
+2026-01-15T09:12:30Z
+
+203.0.113.45
+
+LOGIN
+
+If you recognize this activity, you can ignore this message.
+
+If you do not recognize this activity, Storebox recommends logging in (https://x.com/login) and changing your user credentials immediately. For more information refer to our Security Documentation (https://x.com/docs).
+
+Storebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114`;
+
 // [name, text, expected]
 const cases = [
   ["storebox html", "Storebox Authorization Code\n" + htmlToText(storeboxHtml), "716052"],
@@ -31,6 +55,10 @@ const cases = [
   ["zipcode is not a code", "Confirm your zipcode 90210", null],
   ["word ending in a blocked word", "Your preorder code 735291", "735291"],
   ["skips area code, finds real one", "Area code 4412. Your verification code is 556677", "556677"],
+  ["login notification email (street number, zip, IP, date)", loginNotice, null],
+  ["login notification as stripped HTML", htmlToText("<p>Someone just logged in to your account.</p><p>203.0.113.45</p><p>2026-01-15T09:12:30Z</p><p>Security Documentation</p><p>Storebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114</p>"), null],
+  ["verify word but only an address", "Please verify your account. Acme, 2261 Elm Street, CA 94114", null],
+  ["code alone on its own line", "To verify your identity, enter:\n\n4821\n\nThanks", "4821"],
   ["empty", "", null],
 ];
 

@@ -114,6 +114,8 @@ async function doPoll() {
       const code = extractCode(`${m.subject ?? ""}\n${bodyText(m)}`);
       if (!code) continue;
       const at = Date.parse(m.receivedAt);
+      // Services often send the same code twice (a resend, or a duplicate email): only the first counts.
+      if (codes.some((c) => c.code === code && Math.abs(c.at - at) < FRESH_MS)) continue;
       if (Date.now() - at > KEEP_MS) continue; // too old to be useful
       const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
       // Subjects often contain the code itself ("123456 is your code"), so mask it there too.

@@ -1,4 +1,7 @@
-const KEYWORDS = /((?<![a-z])(?:code|otp)|passcode|\bpin\b|verif|one[- ]time|security|sign[- ]?in|log[- ]?in|2fa|authenticat|confirm)/i;
+// Words that mean the message really is about a one-time code. Deliberately narrow: "login",
+// "sign in" and "security" appear in every login notification and alert, and those are full of
+// street numbers, zip codes, IP addresses and dates, but contain no code.
+const VERIFY_WORDS = /((?<![a-z])(?:code|otp)|passcode|\bpin\b|verif|one[- ]time|2fa|authenticat)/i;
 const isYear = (s) => /^(19|20)\d\d$/.test(s);
 
 export function htmlToText(html) {
@@ -31,12 +34,14 @@ export function extractCode(text) {
   if (before && !isYear(before[1])) return before[1];
 
   // Weak signals: only when the message talks about verification at all.
-  if (!KEYWORDS.test(text)) return null;
-  const loose = /(?<![\d.#$,+()-])\d{4,8}(?![\d.,)-])/g;
-  const cands = [...text.matchAll(loose)]
-    .filter((m) => !isYear(m[0]) && !blocked(text, m.index))
-    .map((m) => m[0]);
-  return cands.find((c) => c.length === 6) ?? cands[0] ?? null;
+  if (!VERIFY_WORDS.test(text)) return null;
+  const usable = (m) => !isYear(m[1]) && !blocked(text, m.index);
+  // A number alone on its line is almost certainly the code ...
+  const alone = [...text.matchAll(/^[ \t]*(\d{4,8})[ \t]*$/gm)].find(usable);
+  if (alone) return alone[1];
+  // ... otherwise accept only a standalone 6-digit number, the most common length.
+  const six = [...text.matchAll(/(?<![\d.#$,+()-])(\d{6})(?![\d.,)-])/g)].find(usable);
+  return six ? six[1] : null;
 }
 
 // "482913" -> "••••13"; shorter codes keep only the last digit.
