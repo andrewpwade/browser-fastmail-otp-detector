@@ -38,7 +38,7 @@ async function render() {
   $("dot").classList.toggle("err", isErr || !token);
   $("banner").replaceChildren();
   if (isErr) $("banner").append(el("div", "banner", status.replace(/^Error: /, "Can't reach Fastmail: ")));
-  $("foot").textContent = token && !isErr ? "Checking your inbox every 30 seconds" : "";
+  $("foot").textContent = token && !isErr ? "Watching your inbox live" : "";
 
   if (!token) {
     const b = el("button", "btn", "Connect Fastmail");

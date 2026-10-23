@@ -13,7 +13,9 @@ async function req(url, token, body) {
 
 export async function getSession(token) {
   const s = await req(SESSION_URL, token);
-  return { apiUrl: s.apiUrl, accountId: s.primaryAccounts[MAIL] };
+  const eventSourceUrl = s.eventSourceUrl
+    ?.replace("{types}", "Email").replace("{closeafter}", "no").replace("{ping}", "20");
+  return { apiUrl: s.apiUrl, accountId: s.primaryAccounts[MAIL], eventSourceUrl };
 }
 
 export async function listMailboxes(token, { apiUrl, accountId }) {
@@ -48,4 +50,32 @@ export async function recentEmails(token, { apiUrl, accountId }, since, mailboxI
   const get = r.methodResponses.find((m) => m[2] === "g");
   if (!get || get[0] === "error") throw new Error(get ? get[1].type : "bad JMAP response");
   return get[1].list;
+}
+
+// Server-Sent Events over fetch (EventSource can't send an Authorization header).
+// Yields {event, data} until the stream ends or `signal` aborts.
+export async function* eventStream(token, { eventSourceUrl }, signal) {
+  const res = await fetch(eventSourceUrl, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+    signal,
+  });
+  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buf += value.replace(/\r\n/g, "\n");
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      let event = "message", data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      yield { event, data };
+    }
+  }
 }
