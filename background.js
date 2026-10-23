@@ -1,9 +1,10 @@
 import { eventStream, getSession, listMailboxes, recentEmails } from "./jmap.js";
-import { extractCode, htmlToText } from "./otp.js";
+import { extractCode, htmlToText, maskCode } from "./otp.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
 const FRESH_MS = 10 * 60 * 1000;
+const KEEP_MS = 60 * 60 * 1000; // codes are short-lived, so don't keep them around
 
 chrome.runtime.onInstalled.addListener(schedule);
 chrome.runtime.onStartup.addListener(schedule);
@@ -104,7 +105,7 @@ async function doPoll() {
       notify(codes[0]);
     }
     await chrome.storage.local.set({
-      session, since: newest, seen: [...seen].slice(-100), codes: codes.slice(0, MAX_CODES),
+      session, since: newest, seen: [...seen].slice(-100), codes: codes.filter((c) => Date.now() - c.at < KEEP_MS).slice(0, MAX_CODES),
       status: `OK ${new Date().toLocaleTimeString()}`,
     });
     updateBadge(codes);
@@ -127,7 +128,7 @@ function notify(c) {
   chrome.notifications.create(`otp:${c.id}`, {
     type: "basic",
     iconUrl: "icons/128.png",
-    title: `Login code: ${c.code}`,
+    title: `Login code: ${maskCode(c.code)}`,
     message: `${c.from} — ${c.subject}`,
     buttons: [{ title: "Copy" }],
     requireInteraction: true,
