@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tag must match manifest version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          for m in manifest.json manifest.firefox.json; do
+            [ "$(python3 -c "import json;print(json.load(open('$m'))['version'])")" = "$v" ] \
+              || { echo "$m version != $v"; exit 1; }
+          done
+
+      - run: npm test
+      - run: npm run build
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes
