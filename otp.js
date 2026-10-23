@@ -13,24 +13,28 @@ export function htmlToText(html) {
     .trim();
 }
 
+const NOT_OTP = /(zip|postal|post|promo(?:tion(?:al)?)?|coupon|discount|area|country|tracking|order|reference|ref|invoice|gift)\s*(?:code)?\W*$/i;
+const blocked = (text, idx) => NOT_OTP.test(text.slice(Math.max(0, idx - 30), idx));
+
 export function extractCode(text) {
-  if (!text || !KEYWORDS.test(text)) return null;
+  if (!text) return null;
   text = text.replace(/https?:\/\/\S+/g, " ");
 
-  // A number right after "code" / "OTP" / "passcode" / "PIN".
+  // Strong signal: a number right after "code" / "OTP" / "passcode" / "PIN". No keyword gate needed.
   const re = /(?:code|otp|passcode|\bpin\b)\b[^\d]{0,40}?(\d{3}[- ]\d{3}|\d{4,8})\b/gi;
   for (const m of text.matchAll(re)) {
     const c = m[1].replace(/\D/g, "");
-    if (!isYear(c)) return c;
+    if (isYear(c) || blocked(text, m.index)) continue;
+    return c;
   }
-  // "123456 is your code"
   const before = text.match(/(?<![\d.])(\d{4,8})\s+(?:is|as)\s+your\b/i);
   if (before && !isYear(before[1])) return before[1];
 
-  const six = text.match(/(?<![\d.#$,-])\d{6}(?![\d.,])/);
-  if (six) return six[0];
-  for (const m of text.matchAll(/(?<![\d.#$,-])\d{4,8}(?![\d.,])/g)) {
-    if (!isYear(m[0])) return m[0];
-  }
-  return null;
+  // Weak signals: only when the message talks about verification at all.
+  if (!KEYWORDS.test(text)) return null;
+  const loose = /(?<![\d.#$,+()-])\d{4,8}(?![\d.,)-])/g;
+  const cands = [...text.matchAll(loose)]
+    .filter((m) => !isYear(m[0]) && !blocked(text, m.index))
+    .map((m) => m[0]);
+  return cands.find((c) => c.length === 6) ?? cands[0] ?? null;
 }
