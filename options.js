@@ -69,12 +69,30 @@ $("savefolders").onclick = async () => {
   go(4);
 };
 
+$("suggest").onchange = async (e) => {
+  const on = e.target.checked;
+  $("smsg").textContent = "";
+  if (on) {
+    // must be requested straight from the click
+    const granted = await chrome.permissions.request({ origins: ["<all_urls>"] });
+    if (!granted) { e.target.checked = false; $("smsg").textContent = "Permission wasn't granted."; return; }
+  } else {
+    await chrome.permissions.remove({ origins: ["<all_urls>"] });
+  }
+  await chrome.storage.local.set({ suggest: on });
+};
+chrome.storage.local.get("suggest").then(async ({ suggest }) => {
+  $("suggest").checked = !!suggest && (await chrome.permissions.contains({ origins: ["<all_urls>"] }));
+});
+
 $("done").onclick = () => window.close();
 
 $("disconnect").onclick = async (e) => {
   e.preventDefault();
   if (!confirm("Remove your token and all saved codes from this browser?")) return;
   await chrome.storage.local.clear();
+  await chrome.permissions.remove({ origins: ["<all_urls>"] }).catch(() => {});
+  $("suggest").checked = false;
   token = null;
   $("token").value = "";
   say("");

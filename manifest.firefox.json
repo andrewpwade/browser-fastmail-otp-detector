@@ -13,7 +13,9 @@
     "storage",
     "alarms",
     "notifications",
-    "clipboardWrite"
+    "clipboardWrite",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://api.fastmail.com/*"
@@ -50,5 +52,8 @@
     "gecko_android": {
       "strict_min_version": "142.0"
     }
-  }
+  },
+  "optional_host_permissions": [
+    "<all_urls>"
+  ]
 }

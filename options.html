@@ -65,6 +65,9 @@ small{color:var(--muted);display:block;margin-top:14px}
       <li>Click the notification, or the toolbar icon, to copy the code</li>
       <li>Tip: pin the extension (puzzle-piece menu → pin) to keep it handy</li>
     </ol>
+    <label class="box" style="margin-top:14px"><input type="checkbox" id="suggest"> <b>Offer to fill codes on websites</b> (optional)</label>
+    <small style="margin-top:0">Shows a small "Fill code" button next to login-code boxes. This needs permission to run on all websites. It only looks for code fields; page content is never read or sent anywhere. The Fill button in the popup works without this.</small>
+    <div id="smsg" class="err"></div>
     <div class="nav">
       <button class="btn ghost" data-go="3">← Change folders</button>
       <button class="btn" id="done">Done</button>

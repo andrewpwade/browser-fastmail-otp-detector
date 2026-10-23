@@ -1,0 +1,31 @@
+<!doctype html><meta charset=utf-8><body><pre id=out>running</pre>
+<div id=root></div>
+<script src="../fill.js"></script>
+<script>
+const F = globalThis.__mccFill, root = document.getElementById("root"), res = [];
+const t = (name, html, run, check) => {
+  root.innerHTML = html;
+  const ret = run ? run() : F.fill("123456", false);
+  res.push((check(ret) ? "PASS " : "FAIL ") + name);
+};
+const v = (s) => document.querySelector(s).value;
+t("autocomplete one-time-code", '<input autocomplete="one-time-code">', 0, () => v("input") === "123456");
+t("named verification_code", '<input name="verification_code">', 0, () => v("input") === "123456");
+t("split boxes", Array(6).fill('<input maxlength=1 inputmode=numeric>').join(""), 0,
+  () => [...document.querySelectorAll("input")].map(i => i.value).join("") === "123456");
+t("search/email ignored", '<input type=search name=q><input type=email name=email>', 0, (r) => r === false);
+t("password field ignored", '<input type=password name=password>', 0, (r) => r === false);
+t("promo code ignored", '<input name="promo_code">', 0, (r) => r === false);
+t("explicit uses focused generic input", '<input name="field1">', () => { document.querySelector("input").focus(); return F.fill("123456", true); },
+  (r) => r === true && v("input") === "123456");
+t("not explicit skips generic", '<input name="field1">', () => { document.querySelector("input").focus(); return F.fill("123456", false); }, (r) => r === false);
+t("fires input+change events", '<input name="otp">', () => {
+  let n = 0; const i = document.querySelector("input");
+  i.addEventListener("input", () => n++); i.addEventListener("change", () => n++);
+  F.fill("123456", false); return n;
+}, (n) => n === 2);
+t("maxlength respected", '<input name="otp" maxlength=4>', 0, () => v("input") === "1234");
+t("hidden field ignored", '<input name="otp" style="display:none">', 0, (r) => r === false);
+t("targetFor focused hinted", '<input name="code">', () => F.targetFor(document.querySelector("input"), false), (r) => r?.els.length === 1);
+document.getElementById("out").textContent = res.join("\n");
+</script>

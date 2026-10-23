@@ -2,7 +2,7 @@
 # Builds dist/chrome and dist/firefox (+ zips) from the shared sources.
 set -e
 cd "$(dirname "$0")"
-SRC="background.js jmap.js otp.js offscreen.html offscreen.js options.html options.js popup.html popup.js styles.css icons"
+SRC="background.js jmap.js otp.js fill.js content.js offscreen.html offscreen.js options.html options.js popup.html popup.js styles.css icons"
 rm -rf dist && mkdir -p dist/chrome dist/firefox
 for t in chrome firefox; do
   cp -r $SRC dist/$t/
