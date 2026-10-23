@@ -130,12 +130,18 @@ function notify(c) {
     iconUrl: "icons/128.png",
     title: `Login code: ${maskCode(c.code)}`,
     message: `${c.from} — ${c.subject}`,
-    buttons: [{ title: "Copy" }],
-    requireInteraction: true,
+    ...(IS_CHROME && { buttons: [{ title: "Copy" }], requireInteraction: true }),
   });
 }
 
+const IS_CHROME = !!chrome.offscreen; // Firefox has no offscreen API, notification buttons or requireInteraction
+
 async function copy(text) {
+  if (!IS_CHROME) {
+    // Firefox background pages have a DOM; clipboardWrite permission allows this without a gesture.
+    await navigator.clipboard.writeText(text);
+    return;
+  }
   if (!(await chrome.offscreen.hasDocument())) {
     await chrome.offscreen.createDocument({
       url: "offscreen.html", reasons: ["CLIPBOARD"], justification: "Copy a login code to the clipboard when the user clicks a notification",
