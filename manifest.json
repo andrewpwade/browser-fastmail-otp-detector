@@ -1,11 +1,39 @@
 {
   "manifest_version": 3,
-  "name": "Fastmail OTP",
+  "name": "CodeDrop – Login Codes from Fastmail",
   "version": "0.1.0",
-  "description": "Polls Fastmail via JMAP for one-time codes and lets you copy them from a notification.",
-  "permissions": ["storage", "alarms", "notifications", "offscreen", "clipboardWrite"],
-  "host_permissions": ["https://api.fastmail.com/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_popup": "popup.html", "default_title": "Fastmail OTP" },
-  "options_ui": { "page": "options.html", "open_in_tab": true }
+  "description": "Catches login and verification codes in your Fastmail inbox and lets you copy them in one click. Not affiliated with Fastmail.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "offscreen",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://api.fastmail.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CodeDrop",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "short_name": "CodeDrop",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
 }
