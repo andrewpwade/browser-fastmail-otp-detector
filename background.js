@@ -103,9 +103,12 @@ async function doPoll() {
       seen.add(m.id);
       const code = extractCode(`${m.subject ?? ""}\n${bodyText(m)}`);
       if (!code) continue;
+      const at = Date.parse(m.receivedAt);
+      if (Date.now() - at > KEEP_MS) continue; // too old to be useful
       const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
-      codes.unshift({ id: m.id, code, from, subject: m.subject ?? "", at: Date.parse(m.receivedAt) });
-      notify(codes[0]);
+      codes.unshift({ id: m.id, code, from, subject: m.subject ?? "", at });
+      // Only pop up for fresh mail, not a backlog found after the browser was closed.
+      if (Date.now() - at < FRESH_MS) notify(codes[0]);
     }
     await chrome.storage.local.set({
       session, since: newest, seen: [...seen].slice(-100), codes: codes.filter((c) => Date.now() - c.at < KEEP_MS).slice(0, MAX_CODES),
