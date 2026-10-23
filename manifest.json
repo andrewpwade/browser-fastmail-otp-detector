@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "CodeDrop – Login Codes from Fastmail",
+  "name": "Mail Code Copy",
   "version": "0.1.0",
   "description": "Catches login and verification codes in your Fastmail inbox and lets you copy them in one click. Not affiliated with Fastmail.",
   "permissions": [
@@ -19,7 +19,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "CodeDrop",
+    "default_title": "Mail Code Copy",
     "default_icon": {
       "16": "icons/16.png",
       "48": "icons/48.png",
@@ -30,7 +30,7 @@
     "page": "options.html",
     "open_in_tab": true
   },
-  "short_name": "CodeDrop",
+  "short_name": "Mail Code Copy",
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",
