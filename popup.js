@@ -24,14 +24,14 @@ async function copy(code, btn) {
   setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1500);
 }
 
-async function fillActiveTab(code) {
+async function fillActiveTab(code, id) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return false;
     const target = { tabId: tab.id, allFrames: true };
     await chrome.scripting.executeScript({ target, files: ["fill.js"] });
     const res = await chrome.scripting.executeScript({
-      target, func: (c) => globalThis.__mccFill?.fill(c, true) ?? false, args: [code],
+      target, func: (c, i) => globalThis.__mccFill?.fill(c, true, i) ?? false, args: [code, id],
     });
     return res.some((r) => r.result);
   } catch {
@@ -68,8 +68,10 @@ async function render() {
     return;
   }
   for (const c of recent) {
-    const card = el("div", "card" + (Date.now() - c.at < FRESH_MS ? " fresh" : ""));
+    const card = el("div", "card" + (Date.now() - c.at < FRESH_MS ? " fresh" : "") + (c.used ? " used" : ""));
     const info = el("div", "info");
+    const meta = el("div", "meta", `${c.from} · ${ago(c.at)}${c.used ? " · used" : ""}`);
+
     const codeEl = el("div", "code", maskCode(c.code));
     const eye = el("button", "eye", "👁");
     eye.title = "Show / hide code";
@@ -81,14 +83,14 @@ async function render() {
     info.append(
       codeEl,
       el("div", "subj", c.subject || "(no subject)"),
-      el("div", "meta", `${c.from} · ${ago(c.at)}`),
+      meta,
     );
     const btn = el("button", "copy", "Copy");
     const fill = el("button", "fill", "Fill");
     fill.title = "Fill the code field on the current page";
     fill.onclick = async (e) => {
       e.stopPropagation();
-      if (await fillActiveTab(c.code)) {
+      if (await fillActiveTab(c.code, c.id)) {
         fill.textContent = "Filled ✓";
       } else {
         await copy(c.code, btn); // nothing to fill here, so copy instead
