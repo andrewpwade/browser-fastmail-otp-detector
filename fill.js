@@ -85,12 +85,65 @@ const OTHER_AUTOCOMPLETE = /(^|\s)(username|email|tel|postal-code|new-password|c
     }
   }
 
-  function fill(code, explicit) {
+  // After a fill, work out whether the code was accepted: the user submits (form submit, Enter, or
+  // a click on a button beside the field) and the page then moves on with no code field left.
+  // A rejected code leaves the field on the page, so it never counts. A submit is reported to the
+  // background script straight away (while the page is still alive), which then watches the tab: if
+  // the submit turns into a navigation, it decides once the next page has loaded.
+  const WATCH_MS = 2 * 60 * 1000; // stop watching after two minutes
+  const SUBMIT_WINDOW_MS = 20 * 1000; // how long after a submit we wait for the page to move on
+  let stopWatching = null;
+
+  function watch(id, els) {
+    stopWatching?.();
+    const send = (msg) => {
+      try { globalThis.chrome?.runtime?.sendMessage(msg); } catch { /* extension was reloaded */ }
+    };
+    const field = els[0];
+    const form = field.form;
+    const startPath = location.origin + location.pathname;
+    const startedAt = Date.now();
+    let submittedAt = 0;
+    const undo = [];
+    const on = (target, type, fn) => {
+      target.addEventListener(type, fn, true);
+      undo.push(() => target.removeEventListener(type, fn, true));
+    };
+    const stop = () => { clearInterval(timer); undo.forEach((u) => u()); stopWatching = null; };
+    const submitted = () => {
+      if (Date.now() - submittedAt > 1000) send({ type: "submitted", id, url: location.href });
+      submittedAt = Date.now();
+    };
+
+    if (form) on(form, "submit", submitted);
+    on(document, "keydown", (e) => { if (e.isTrusted && e.key === "Enter" && els.includes(e.target)) submitted(); });
+    on(document, "click", (e) => {
+      if (!e.isTrusted) return;
+      const button = e.target.closest?.("button, input[type=submit], input[type=button], [role=button]");
+      if (button && (form ?? field.parentElement?.parentElement)?.contains(button)) submitted();
+    });
+    on(window, "pagehide", stop);
+
+    const timer = setInterval(() => {
+      if (Date.now() - startedAt > WATCH_MS) return stop();
+      if (Date.now() - submittedAt > SUBMIT_WINDOW_MS) return; // not submitted (yet)
+      const moved = location.origin + location.pathname !== startPath;
+      const gone = !field.isConnected || !visible(field);
+      if ((moved || gone) && !findTarget(false)) {
+        send({ type: "confirmed", id });
+        stop();
+      }
+    }, 400);
+    stopWatching = stop;
+  }
+
+  function fill(code, explicit, id) {
     const t = findTarget(explicit);
     if (!t) return false;
     fillEls(t.els, code);
+    if (id) watch(id, t.els);
     return true;
   }
 
-  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill, onScreen };
+  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill, watch, onScreen };
 })();

@@ -1,0 +1,45 @@
+<!doctype html><meta charset=utf-8><body><pre id=out>running</pre>
+<div id=root></div>
+<script>
+// Stub the extension API that fill.js reports to.
+const sent = [];
+window.chrome = { runtime: { sendMessage: (m) => sent.push(m) } };
+</script>
+<script src="../fill.js"></script>
+<script>
+const F = globalThis.__mccFill, root = document.getElementById("root"), res = [];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const FORM = '<form id="f"><input name="otp" autocomplete="one-time-code"><button type="button" id="b">Go</button></form>';
+
+async function scenario(name, html, act, expected) {
+  sent.length = 0;
+  root.innerHTML = html;
+  const field = root.querySelector("input");
+  field.focus();
+  F.fill("123456", false, "id1");
+  await act(field);
+  await sleep(1500);
+  const got = sent.map((m) => m.type).join();
+  res.push((got === expected ? "PASS " : "FAIL ") + name + (got === expected ? "" : ` (got "${got}", want "${expected}")`));
+}
+const submit = () => {
+  const f = document.getElementById("f");
+  f.addEventListener("submit", (e) => e.preventDefault());
+  f.requestSubmit();
+};
+
+(async () => {
+  await scenario("submit, then the page moves on: confirmed", FORM, async () => { submit(); await sleep(100); root.innerHTML = "<p>Welcome</p>"; }, "submitted,confirmed");
+  await scenario("field removed without a submit: nothing", FORM, async () => { root.innerHTML = ""; }, "");
+  await scenario("submit, field still there (rejected): never confirmed", FORM, async () => { submit(); }, "submitted");
+  await scenario("submit, field re-rendered (rejected): never confirmed", FORM, async () => { submit(); await sleep(100); root.innerHTML = FORM; }, "submitted");
+  await scenario("scripted click is not a submit: nothing", FORM, async () => { document.getElementById("b").click(); await sleep(100); root.innerHTML = ""; }, "");
+  await scenario("submit is reported straight away", FORM, async () => { submit(); }, "submitted");
+  await scenario("submit reported once, then confirmed when the page moves on", FORM, async () => { submit(); await sleep(100); root.innerHTML = "<p>Welcome</p>"; }, "submitted,confirmed");
+  await scenario("pagehide without a submit: nothing", FORM, async () => { window.dispatchEvent(new Event("pagehide")); }, "");
+  await scenario("submit, URL changes and field gone: confirmed", FORM, async () => {
+    submit(); await sleep(100); history.pushState({}, "", "/welcome"); root.innerHTML = "<p>Welcome</p>";
+  }, "submitted,confirmed");
+  document.getElementById("out").textContent = res.join("\n");
+})();
+</script>

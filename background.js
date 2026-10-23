@@ -1,6 +1,6 @@
 import { eventStream, getSession, listMailboxes, recentEmails, utcNow } from "./jmap.js";
 import { extractCode, htmlToText, maskCode, maskIn } from "./otp.js";
-import { FRESH_MS, KEEP_MS } from "./constants.js";
+import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
@@ -185,25 +185,40 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     poll().then(() => reply());
     return true;
   }
+  if (msg.type === "confirmed" && sender.tab) { // the page accepted a code we filled
+    serial(() => markUsed(msg.id)).then(() => reply(), () => reply());
+    return true;
+  }
+  if (msg.type === "submitted" && sender.tab) { // the user submitted a code we filled
+    setPending(sender.tab.id, { id: msg.id, url: msg.url, at: Date.now(), armed: false }).then(() => reply(), () => reply());
+    return true;
+  }
   if ((msg.type === "latest" || msg.type === "claim") && sender.tab) {
     serial(() => suggest(msg)).then(reply, () => reply(null));
     return true;
   }
 });
 
+// A code is only spent once it was submitted and the site accepted it. A spent code stays in the
+// popup list (dimmed) but is never offered on pages again.
+async function markUsed(id) {
+  const { codes = [] } = await chrome.storage.local.get("codes");
+  const c = codes.find((x) => x.id === id);
+  if (!c || c.used) return;
+  c.used = true;
+  await chrome.storage.local.set({ codes });
+}
+
 // On-page suggestions: content scripts only ever get a masked code until the user clicks Fill.
 async function suggest(msg) {
   const { codes = [] } = await chrome.storage.local.get("codes");
-  const fresh = (c) => !c.used && Date.now() - c.at < FRESH_MS;
+  const offerable = (c) => !c.used && Date.now() - c.at < OFFER_MS;
   if (msg.type === "latest") {
-    const c = codes.find(fresh);
-    return c ? { id: c.id, masked: maskCode(c.code) } : null;
+    // Newest first (codes are stored that way), without the codes themselves.
+    return codes.filter(offerable).map((c) => ({ id: c.id, masked: maskCode(c.code), from: c.from, at: c.at }));
   }
-  const c = codes.find((x) => x.id === msg.id && fresh(x));
-  if (!c) return null;
-  c.used = true;
-  await chrome.storage.local.set({ codes });
-  return { code: c.code };
+  const c = codes.find((x) => x.id === msg.id && offerable(x));
+  return c ? { code: c.code } : null;
 }
 
 // Register the content script only while the user has opted in and granted site access.
@@ -226,3 +241,43 @@ async function doSyncSuggest() {
     console.warn("Couldn't update on-page suggestions", e);
   }
 }
+
+// Full page navigations. After a submit, the tab either starts navigating straight away (a form
+// POST or redirect) or it doesn't (an in-page submit, which the page itself reports with "confirmed").
+// Once the next page has loaded, the code counts as accepted if the address changed (a reload on the
+// same address means it was rejected) and that page has no code field. The new address is only
+// visible with the on-page-suggestions permission; without it we can't tell, so nothing is marked.
+const NAVIGATE_MS = 10 * 1000; // a submit must start navigating within this long
+const PENDING_MS = 60 * 1000; // and the next page must finish loading within this long
+const sameDocument = (a, b) => {
+  const key = (u) => { const x = new URL(u); return x.origin + x.pathname; };
+  return key(a) === key(b);
+};
+
+async function setPending(tabId, entry) {
+  const { pending = {} } = await chrome.storage.session.get("pending");
+  pending[tabId] = entry;
+  await chrome.storage.session.set({ pending });
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  if (info.status !== "loading" && info.status !== "complete") return;
+  const { pending = {} } = await chrome.storage.session.get("pending");
+  const p = pending[tabId];
+  if (!p) return;
+  const age = Date.now() - p.at;
+
+  if (info.status === "loading") {
+    if (age < NAVIGATE_MS) p.armed = true; // the submit turned into a navigation
+    else delete pending[tabId]; // some later, unrelated navigation
+    await chrome.storage.session.set({ pending });
+    return;
+  }
+
+  if (!p.armed) return; // finished loading without navigating after the submit: nothing to decide
+  delete pending[tabId];
+  await chrome.storage.session.set({ pending });
+  if (age > PENDING_MS || !tab.url || sameDocument(tab.url, p.url)) return;
+  const hasCodeField = await chrome.tabs.sendMessage(tabId, { type: "hasCodeField" }, { frameId: 0 }).catch(() => false);
+  if (!hasCodeField) await serial(() => markUsed(p.id));
+});
