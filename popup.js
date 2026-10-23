@@ -25,6 +25,21 @@ async function copy(code, btn) {
   setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1500);
 }
 
+async function fillActiveTab(code) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return false;
+    const target = { tabId: tab.id, allFrames: true };
+    await chrome.scripting.executeScript({ target, files: ["fill.js"] });
+    const res = await chrome.scripting.executeScript({
+      target, func: (c) => globalThis.__mccFill?.fill(c, true) ?? false, args: [code],
+    });
+    return res.some((r) => r.result);
+  } catch {
+    return false; // restricted page (chrome://, store, PDF viewer…)
+  }
+}
+
 function empty(big, title, sub, action) {
   const d = el("div", "empty");
   d.append(el("div", "big", big), el("b", null, title), el("span", null, sub));
@@ -74,7 +89,19 @@ async function render() {
       el("div", "meta", `${c.from} · ${ago(c.at)}`),
     );
     const btn = el("button", "copy", "Copy");
-    card.append(info, eye, btn);
+    const fill = el("button", "fill", "Fill");
+    fill.title = "Fill the code field on the current page";
+    fill.onclick = async (e) => {
+      e.stopPropagation();
+      if (await fillActiveTab(c.code)) {
+        fill.textContent = "Filled ✓";
+      } else {
+        await copy(c.code, btn); // nothing to fill here, so copy instead
+        fill.textContent = "No field";
+      }
+      setTimeout(() => { fill.textContent = "Fill"; }, 1500);
+    };
+    card.append(info, eye, fill, btn);
     card.onclick = () => copy(c.code, btn);
     list.append(card);
   }

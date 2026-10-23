@@ -11,10 +11,13 @@ Load `dist/chrome` via chrome://extensions → Load unpacked, or `dist/firefox/m
     node tests/otp.test.mjs
     node tests/stream.test.mjs
 
+Fill logic tests: serve the repo (`python3 -m http.server`) and open `tests/fill.test.html`; every line should say PASS.
+
 ## Layout
 - `background.js` – polling, live push stream, notifications, clipboard
 - `jmap.js` – JMAP session, mailbox, email queries and SSE stream
 - `otp.js` – code detection and masking
+- `fill.js` – finds and fills code fields; `content.js` – optional on-page "Fill code" chip
 - `popup.*`, `options.*` – popup and setup wizard
 - `manifest.json` (Chrome), `manifest.firefox.json` (Firefox)
 

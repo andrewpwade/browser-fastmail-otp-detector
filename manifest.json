@@ -8,7 +8,9 @@
     "alarms",
     "notifications",
     "offscreen",
-    "clipboardWrite"
+    "clipboardWrite",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://api.fastmail.com/*"
@@ -35,5 +37,8 @@
     "16": "icons/16.png",
     "48": "icons/48.png",
     "128": "icons/128.png"
-  }
+  },
+  "optional_host_permissions": [
+    "<all_urls>"
+  ]
 }

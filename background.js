@@ -8,10 +8,12 @@ const KEEP_MS = 60 * 60 * 1000; // codes are short-lived, so don't keep them aro
 
 chrome.runtime.onInstalled.addListener((d) => {
   schedule();
+  syncSuggest();
   if (d.reason === "install") chrome.runtime.openOptionsPage(); // start the setup wizard
 });
 chrome.runtime.onStartup.addListener(schedule);
 chrome.storage.onChanged.addListener((c, area) => {
+  if (area === "local" && c.suggest) syncSuggest();
   if (area === "local" && c.token) {
     streamAbort?.abort();
     reset().then(() => { poll(); ensureStream(); });
@@ -167,8 +169,43 @@ function onNotifyAction(id) {
 chrome.notifications.onClicked.addListener(onNotifyAction);
 chrome.notifications.onButtonClicked.addListener(onNotifyAction);
 
-chrome.runtime.onMessage.addListener((msg, _s, reply) => {
-  if (msg.type !== "poll") return;
-  poll().then(() => reply());
-  return true;
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (msg.type === "poll") {
+    poll().then(() => reply());
+    return true;
+  }
+  if ((msg.type === "latest" || msg.type === "claim") && sender.tab) {
+    suggest(msg).then(reply);
+    return true;
+  }
 });
+
+// On-page suggestions: content scripts only ever get a masked code until the user clicks Fill.
+async function suggest(msg) {
+  const { codes = [] } = await chrome.storage.local.get("codes");
+  const fresh = (c) => !c.used && Date.now() - c.at < FRESH_MS;
+  if (msg.type === "latest") {
+    const c = codes.find(fresh);
+    return c ? { id: c.id, masked: maskCode(c.code) } : null;
+  }
+  const c = codes.find((x) => x.id === msg.id && fresh(x));
+  if (!c) return null;
+  c.used = true;
+  await chrome.storage.local.set({ codes });
+  return { code: c.code };
+}
+
+// Register the content script only while the user has opted in and granted site access.
+async function syncSuggest() {
+  const { suggest: on } = await chrome.storage.local.get("suggest");
+  const granted = on && (await chrome.permissions.contains({ origins: ["<all_urls>"] }));
+  try { await chrome.scripting.unregisterContentScripts({ ids: ["suggest"] }); } catch { /* not registered */ }
+  if (granted) {
+    await chrome.scripting.registerContentScripts([{
+      id: "suggest", matches: ["<all_urls>"], js: ["fill.js", "content.js"],
+      allFrames: true, runAt: "document_idle", persistAcrossSessions: true,
+    }]);
+  }
+}
+chrome.runtime.onStartup.addListener(syncSuggest);
+chrome.permissions.onRemoved.addListener(syncSuggest);
