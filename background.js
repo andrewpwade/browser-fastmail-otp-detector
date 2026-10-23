@@ -1,5 +1,5 @@
 import { getSession, recentEmails } from "./jmap.js";
-import { extractCode } from "./otp.js";
+import { extractCode, htmlToText } from "./otp.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
@@ -21,7 +21,21 @@ async function reset() {
   await chrome.storage.local.set({ session: null, since: new Date().toISOString(), seen: [], codes: [] });
 }
 
-async function poll() {
+// Serialise polls so overlapping triggers can't process the same email twice.
+let chain = Promise.resolve();
+function poll() {
+  return (chain = chain.then(doPoll, doPoll));
+}
+
+function bodyText(m) {
+  const parts = (m.textBody ?? []).map((p) => {
+    const v = m.bodyValues?.[p.partId]?.value ?? "";
+    return p.type === "text/html" ? htmlToText(v) : v;
+  });
+  return parts.join(" ") || m.preview || "";
+}
+
+async function doPoll() {
   const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes"]);
   if (!st.token) return setStatus("No API token set");
   try {
@@ -36,7 +50,7 @@ async function poll() {
       if (m.receivedAt > newest) newest = m.receivedAt;
       if (seen.has(m.id)) continue;
       seen.add(m.id);
-      const code = extractCode(`${m.subject ?? ""}\n${m.preview ?? ""}`);
+      const code = extractCode(`${m.subject ?? ""}\n${bodyText(m)}`);
       if (!code) continue;
       const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
       codes.unshift({ id: m.id, code, from, subject: m.subject ?? "", at: Date.parse(m.receivedAt) });
@@ -63,7 +77,7 @@ function updateBadge(codes) {
 }
 
 function notify(c) {
-  chrome.notifications.create(`otp:${c.code}`, {
+  chrome.notifications.create(`otp:${c.id}`, {
     type: "basic",
     iconUrl: "icon.png",
     title: `Code: ${c.code}`,
@@ -84,7 +98,10 @@ async function copy(text) {
 
 function onNotifyAction(id) {
   if (!id.startsWith("otp:")) return;
-  copy(id.slice(4));
+  chrome.storage.local.get("codes").then(({ codes = [] }) => {
+    const c = codes.find((x) => x.id === id.slice(4));
+    if (c) copy(c.code);
+  });
   chrome.notifications.clear(id);
 }
 chrome.notifications.onClicked.addListener(onNotifyAction);
