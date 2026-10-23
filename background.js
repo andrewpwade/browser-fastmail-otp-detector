@@ -106,3 +106,9 @@ function onNotifyAction(id) {
 }
 chrome.notifications.onClicked.addListener(onNotifyAction);
 chrome.notifications.onButtonClicked.addListener(onNotifyAction);
+
+chrome.runtime.onMessage.addListener((msg, _s, reply) => {
+  if (msg.type !== "poll") return;
+  poll().then(() => reply());
+  return true;
+});

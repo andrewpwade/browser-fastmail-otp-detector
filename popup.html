@@ -1,12 +1,32 @@
 <!doctype html>
 <meta charset="utf-8">
+<link rel="stylesheet" href="styles.css">
 <style>
-body{font:13px system-ui;width:320px;margin:8px}
-.row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ddd}
-.row div{flex:1;min-width:0}.subj{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.code{font:600 18px monospace}
-.sub{color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#status{color:#666;font-size:11px;margin-top:6px}
+body{width:340px}
+header{display:flex;align-items:center;gap:6px;padding:12px 14px 8px}
+header h1{flex:1;margin:0;font-size:15px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.err{background:var(--err)}
+#list{padding:0 10px 6px;max-height:400px;overflow-y:auto}
+.card{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.card:hover{border-color:var(--accent)}
+.card.fresh{background:var(--fresh)}
+.info{flex:1;min-width:0}
+.code{font:700 22px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}
+.subj,.meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.subj{font-weight:600;margin-top:2px}.meta{color:var(--muted);font-size:12px}
+.copy{padding:7px 12px;background:var(--accent);color:var(--accent-text);font-weight:600;min-width:68px}
+.copy.done{background:var(--ok);color:#fff}
+.empty{text-align:center;color:var(--muted);padding:28px 20px}
+.empty .big{font-size:30px}.empty b{display:block;color:var(--text);margin:6px 0 2px;font-size:15px}
+.banner{margin:0 10px 8px;padding:8px 10px;border-radius:8px;background:var(--card);border:1px solid var(--err);color:var(--err);font-size:12px}
+footer{padding:4px 14px 10px;color:var(--muted);font-size:11px}
 </style>
-<div id="list"></div><div id="status"></div>
-<a href="#" id="opts">Settings</a>
+<header>
+  <span class="dot" id="dot"></span><h1>Fastmail OTP</h1>
+  <button class="btn ghost" id="refresh" title="Check now">↻</button>
+  <button class="btn ghost" id="opts" title="Settings">⚙</button>
+</header>
+<div id="banner"></div>
+<div id="list"></div>
+<footer id="foot"></footer>
 <script src="popup.js"></script>
