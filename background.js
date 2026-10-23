@@ -6,7 +6,10 @@ const MAX_CODES = 20;
 const FRESH_MS = 10 * 60 * 1000;
 const KEEP_MS = 60 * 60 * 1000; // codes are short-lived, so don't keep them around
 
-chrome.runtime.onInstalled.addListener(schedule);
+chrome.runtime.onInstalled.addListener((d) => {
+  schedule();
+  if (d.reason === "install") chrome.runtime.openOptionsPage(); // start the setup wizard
+});
 chrome.runtime.onStartup.addListener(schedule);
 chrome.storage.onChanged.addListener((c, area) => {
   if (area === "local" && c.token) {
