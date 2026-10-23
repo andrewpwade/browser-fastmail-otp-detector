@@ -5,7 +5,9 @@
 
   const TEXTY = /^(text|tel|number|password|)$/i;
   const HINT = /otp|one.?time|verif|2fa|mfa|passcode|security.?code|auth\w*.?code|\btoken\b|\bpin\b|(^|[^a-z])code([^a-z]|$)/i;
-  const SKIP = /search|e-?mail|user|phone|zip|postal|coupon|promo|discount|gift|captcha/i;
+  const SKIP = /search|e-?mail|user|phone|zip|postal|coupon|promo|discount|gift|captcha|cvc|cvv|card|country|area|dial|currency|voucher|referral|invite/i;
+// Fields that declare themselves as something other than a one-time code.
+const OTHER_AUTOCOMPLETE = /(^|\s)(username|email|tel|postal-code|new-password|current-password|name|street-address|organization|country\S*|cc-\S+)(\s|$)/;
 
   const visible = (el) => {
     const r = el.getBoundingClientRect();
@@ -16,8 +18,22 @@
   function isCodeField(el) {
     if (!usable(el)) return false;
     if (el.autocomplete === "one-time-code") return true;
+    if (OTHER_AUTOCOMPLETE.test(el.autocomplete)) return false;
     const attrs = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), el.getAttribute("data-testid")].join(" ");
     return HINT.test(attrs) && !SKIP.test(attrs);
+  }
+
+  // Really on screen and not covered or see-through. Stops a page from tricking a click onto
+  // the "Fill code" chip by focusing a hidden field.
+  function onScreen(el) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) return false;
+    for (let n = el, i = 0; n && i < 8; n = n.parentElement, i++) {
+      const s = getComputedStyle(n);
+      if (s.opacity === "0" || s.visibility === "hidden") return false;
+    }
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit) || hit.closest("label")?.control === el);
   }
 
   // A row of 4–8 single-character boxes (the "six little squares" pattern).
@@ -37,7 +53,8 @@
     if (!el || el.tagName !== "INPUT") return null;
     const group = splitGroup(el);
     if (group) return { els: group };
-    if (isCodeField(el) || (explicit && usable(el))) return { els: [el] };
+    // An explicit Fill may use any text box the user focused, but never a password box.
+    if (isCodeField(el) || (explicit && usable(el) && el.type !== "password")) return { els: [el] };
     return null;
   }
 
@@ -75,5 +92,5 @@
     return true;
   }
 
-  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill };
+  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill, onScreen };
 })();

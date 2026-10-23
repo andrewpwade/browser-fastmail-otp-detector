@@ -1,40 +1,46 @@
-import { eventStream, getSession, listMailboxes, recentEmails } from "./jmap.js";
-import { extractCode, htmlToText, maskCode } from "./otp.js";
+import { eventStream, getSession, listMailboxes, recentEmails, utcNow } from "./jmap.js";
+import { extractCode, htmlToText, maskCode, maskIn } from "./otp.js";
+import { FRESH_MS, KEEP_MS } from "./constants.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
-const FRESH_MS = 10 * 60 * 1000;
-const KEEP_MS = 60 * 60 * 1000; // codes are short-lived, so don't keep them around
+const STREAM_MAX_MS = 4 * 60 * 1000;
+const IS_CHROME = !!chrome.offscreen; // Firefox has no offscreen API, notification buttons or requireInteraction
 
 chrome.runtime.onInstalled.addListener((d) => {
   schedule();
   syncSuggest();
   if (d.reason === "install") chrome.runtime.openOptionsPage(); // start the setup wizard
 });
-chrome.runtime.onStartup.addListener(schedule);
+chrome.runtime.onStartup.addListener(() => {
+  schedule();
+  syncSuggest();
+});
+chrome.permissions.onRemoved.addListener(syncSuggest);
 chrome.storage.onChanged.addListener((c, area) => {
-  if (area === "local" && c.suggest) syncSuggest();
-  if (area === "local" && c.token) {
+  if (area !== "local") return;
+  if (c.suggest) syncSuggest();
+  if (c.token) {
     streamAbort?.abort();
-    reset().then(() => { poll(); ensureStream(); });
+    if (!c.token.newValue) { // disconnected: leave storage as the user cleared it
+      chrome.action.setBadgeText({ text: "" });
+      return;
+    }
+    reset().then(() => poll().then(ensureStream));
   }
 });
 
 function schedule() {
   chrome.alarms.create(ALARM, { periodInMinutes: 1 });
-  poll();
-  ensureStream();
+  poll().then(ensureStream);
 }
 chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name !== ALARM) return;
-  poll();
-  ensureStream(); // the alarm also revives the worker (and the stream) if Chrome stopped it
+  if (a.name === ALARM) poll().then(ensureStream); // the alarm also revives the worker (and the stream) if Chrome stopped it
 });
 
 // Live push: Fastmail sends a "state" event when mail changes, which triggers a poll.
 // Each stream event calls an extension API, which resets the service worker idle timer.
 // The stream is reopened every 4 min to stay under Chrome's 5-minute single-request limit.
-const STREAM_MAX_MS = 4 * 60 * 1000;
 let streamRun = null;
 let streamAbort = null;
 
@@ -46,34 +52,36 @@ async function runStream() {
   let delay = 1000;
   for (;;) {
     const { token, session } = await chrome.storage.local.get(["token", "session"]);
-    if (!token || !session?.eventSourceUrl) return; // poll() fills session in; the alarm retries
+    if (!token || !session?.eventSourceUrl) return; // the next poll fills the session in
     const ac = (streamAbort = new AbortController());
     const timer = setTimeout(() => ac.abort(), STREAM_MAX_MS);
     try {
       for await (const ev of eventStream(token, session, ac.signal)) {
-        chrome.runtime.getPlatformInfo();
+        chrome.runtime.getPlatformInfo(); // resets the worker idle timer
         delay = 1000;
         if (ev.event === "state") poll();
       }
     } catch (e) {
       if (e.status === 401 || e.status === 403) return;
-      if (!ac.signal.aborted) delay = Math.min(delay * 2, 30000);
     } finally {
       clearTimeout(timer);
     }
-    if (!ac.signal.aborted) await new Promise((r) => setTimeout(r, delay));
+    if (ac.signal.aborted) continue; // our own scheduled reopen, or the token changed: reconnect now
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 30000);
   }
 }
 
 async function reset() {
-  await chrome.storage.local.set({ session: null, since: new Date().toISOString(), seen: [], codes: [] });
+  await chrome.storage.local.remove("mailboxIds"); // folder ids belong to the previous account
+  await chrome.storage.local.set({ session: null, since: utcNow(), seen: [], codes: [] });
 }
 
-// Serialise polls so overlapping triggers can't process the same email twice.
+// Run storage-touching work one at a time, so overlapping triggers
+// (alarm, push, popup, page) can't process the same email twice or overwrite each other.
 let chain = Promise.resolve();
-function poll() {
-  return (chain = chain.then(doPoll, doPoll));
-}
+const serial = (fn) => (chain = chain.then(fn, fn));
+const poll = () => serial(doPoll);
 
 function bodyText(m) {
   const parts = (m.textBody ?? []).map((p) => {
@@ -84,16 +92,16 @@ function bodyText(m) {
 }
 
 async function doPoll() {
-  const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds"]);
-  if (!st.token) return setStatus("No API token set");
   try {
+    const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds", "viewedAt"]);
+    if (!st.token) return setStatus("No API token set");
     const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
     if (!session.inboxId) {
       session.inboxId = (await listMailboxes(st.token, session)).find((x) => x.role === "inbox")?.id;
       if (!session.inboxId) throw new Error("no Inbox found");
     }
     const mailboxIds = st.mailboxIds?.length ? st.mailboxIds : [session.inboxId];
-    const since = st.since ?? new Date().toISOString();
+    const since = st.since ?? utcNow();
     const seen = new Set(st.seen ?? []);
     const emails = await recentEmails(st.token, session, since, mailboxIds);
     const codes = st.codes ?? [];
@@ -108,15 +116,17 @@ async function doPoll() {
       const at = Date.parse(m.receivedAt);
       if (Date.now() - at > KEEP_MS) continue; // too old to be useful
       const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
-      codes.unshift({ id: m.id, code, from, subject: m.subject ?? "", at });
+      // Subjects often contain the code itself ("123456 is your code"), so mask it there too.
+      codes.unshift({ id: m.id, code, from, subject: maskIn(m.subject ?? "", code), at });
       // Only pop up for fresh mail, not a backlog found after the browser was closed.
       if (Date.now() - at < FRESH_MS) notify(codes[0]);
     }
+    const kept = codes.filter((c) => Date.now() - c.at < KEEP_MS).slice(0, MAX_CODES);
     await chrome.storage.local.set({
-      session, since: newest, seen: [...seen].slice(-100), codes: codes.filter((c) => Date.now() - c.at < KEEP_MS).slice(0, MAX_CODES),
+      session, since: newest, seen: [...seen].slice(-100), codes: kept,
       status: `OK ${new Date().toLocaleTimeString()}`,
     });
-    updateBadge(codes);
+    updateBadge(kept, st.viewedAt ?? 0);
   } catch (e) {
     await chrome.storage.local.set({ session: null });
     setStatus(`Error: ${e.message}`);
@@ -127,8 +137,9 @@ function setStatus(status) {
   return chrome.storage.local.set({ status });
 }
 
-function updateBadge(codes) {
-  const n = codes.filter((c) => Date.now() - c.at < FRESH_MS).length;
+// Badge = fresh codes the user hasn't looked at yet (opening the popup counts as looking).
+function updateBadge(codes, viewedAt) {
+  const n = codes.filter((c) => c.at > viewedAt && Date.now() - c.at < FRESH_MS).length;
   chrome.action.setBadgeText({ text: n ? String(n) : "" });
 }
 
@@ -141,8 +152,6 @@ function notify(c) {
     ...(IS_CHROME && { buttons: [{ title: "Copy" }], requireInteraction: true }),
   });
 }
-
-const IS_CHROME = !!chrome.offscreen; // Firefox has no offscreen API, notification buttons or requireInteraction
 
 async function copy(text) {
   if (!IS_CHROME) {
@@ -175,7 +184,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true;
   }
   if ((msg.type === "latest" || msg.type === "claim") && sender.tab) {
-    suggest(msg).then(reply);
+    serial(() => suggest(msg)).then(reply, () => reply(null));
     return true;
   }
 });
@@ -196,16 +205,22 @@ async function suggest(msg) {
 }
 
 // Register the content script only while the user has opted in and granted site access.
-async function syncSuggest() {
-  const { suggest: on } = await chrome.storage.local.get("suggest");
-  const granted = on && (await chrome.permissions.contains({ origins: ["<all_urls>"] }));
-  try { await chrome.scripting.unregisterContentScripts({ ids: ["suggest"] }); } catch { /* not registered */ }
-  if (granted) {
-    await chrome.scripting.registerContentScripts([{
-      id: "suggest", matches: ["<all_urls>"], js: ["fill.js", "content.js"],
-      allFrames: true, runAt: "document_idle", persistAcrossSessions: true,
-    }]);
+let syncing = Promise.resolve();
+function syncSuggest() {
+  return (syncing = syncing.then(doSyncSuggest, doSyncSuggest));
+}
+async function doSyncSuggest() {
+  try {
+    const { suggest: on } = await chrome.storage.local.get("suggest");
+    const granted = on && (await chrome.permissions.contains({ origins: ["<all_urls>"] }));
+    try { await chrome.scripting.unregisterContentScripts({ ids: ["suggest"] }); } catch { /* not registered */ }
+    if (granted) {
+      await chrome.scripting.registerContentScripts([{
+        id: "suggest", matches: ["<all_urls>"], js: ["fill.js", "content.js"],
+        allFrames: true, runAt: "document_idle", persistAcrossSessions: true,
+      }]);
+    }
+  } catch (e) {
+    console.warn("Couldn't update on-page suggestions", e);
   }
 }
-chrome.runtime.onStartup.addListener(syncSuggest);
-chrome.permissions.onRemoved.addListener(syncSuggest);

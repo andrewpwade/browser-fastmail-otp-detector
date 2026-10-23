@@ -18,7 +18,7 @@ Mail Code Copy finds login and verification codes in your Fastmail inbox and let
 
 ## What is stored
 - On your device, in the browser's extension storage: your token, your chosen folders, IDs of messages already seen, and detected codes with their sender and subject.
-- Detected codes are deleted after 1 hour. The extension's storage is not synced to other devices.
+- Detected codes are discarded after about an hour. The extension's storage is not synced to other devices.
 - The token is **not encrypted** in browser storage. Use a read-only token and revoke it in Fastmail if you lose control of your browser profile.
 - "Disconnect and clear all data" in the extension's settings removes everything it stores. Uninstalling the extension does too.
 
