@@ -5,7 +5,8 @@ chrome.storage.local.get(["codes", "status"]).then(({ codes = [], status = "" })
   for (const c of codes) {
     const row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = '<div><div class="code"></div><div class="sub"></div></div><button>Copy</button>';
+    row.innerHTML = '<div><div class="subj"></div><div class="code"></div><div class="sub"></div></div><button>Copy</button>';
+    row.querySelector(".subj").textContent = c.subject || "(no subject)";
     row.querySelector(".code").textContent = c.code;
     row.querySelector(".sub").textContent = `${c.from} · ${new Date(c.at).toLocaleTimeString()}`;
     row.querySelector("button").onclick = (e) => {
