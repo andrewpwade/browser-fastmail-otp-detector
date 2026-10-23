@@ -1,4 +1,4 @@
-import { getSession, listMailboxes, recentEmails } from "./jmap.js";
+import { eventStream, getSession, listMailboxes, recentEmails } from "./jmap.js";
 import { extractCode, htmlToText } from "./otp.js";
 
 const ALARM = "poll";
@@ -8,14 +8,56 @@ const FRESH_MS = 10 * 60 * 1000;
 chrome.runtime.onInstalled.addListener(schedule);
 chrome.runtime.onStartup.addListener(schedule);
 chrome.storage.onChanged.addListener((c, area) => {
-  if (area === "local" && c.token) reset().then(poll);
+  if (area === "local" && c.token) {
+    streamAbort?.abort();
+    reset().then(() => { poll(); ensureStream(); });
+  }
 });
 
 function schedule() {
-  chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
+  chrome.alarms.create(ALARM, { periodInMinutes: 1 });
   poll();
+  ensureStream();
 }
-chrome.alarms.onAlarm.addListener((a) => a.name === ALARM && poll());
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name !== ALARM) return;
+  poll();
+  ensureStream(); // the alarm also revives the worker (and the stream) if Chrome stopped it
+});
+
+// Live push: Fastmail sends a "state" event when mail changes, which triggers a poll.
+// Each stream event calls an extension API, which resets the service worker idle timer.
+// The stream is reopened every 4 min to stay under Chrome's 5-minute single-request limit.
+const STREAM_MAX_MS = 4 * 60 * 1000;
+let streamRun = null;
+let streamAbort = null;
+
+function ensureStream() {
+  if (!streamRun) streamRun = runStream().finally(() => { streamRun = null; });
+}
+
+async function runStream() {
+  let delay = 1000;
+  for (;;) {
+    const { token, session } = await chrome.storage.local.get(["token", "session"]);
+    if (!token || !session?.eventSourceUrl) return; // poll() fills session in; the alarm retries
+    const ac = (streamAbort = new AbortController());
+    const timer = setTimeout(() => ac.abort(), STREAM_MAX_MS);
+    try {
+      for await (const ev of eventStream(token, session, ac.signal)) {
+        chrome.runtime.getPlatformInfo();
+        delay = 1000;
+        if (ev.event === "state") poll();
+      }
+    } catch (e) {
+      if (e.status === 401 || e.status === 403) return;
+      if (!ac.signal.aborted) delay = Math.min(delay * 2, 30000);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!ac.signal.aborted) await new Promise((r) => setTimeout(r, delay));
+  }
+}
 
 async function reset() {
   await chrome.storage.local.set({ session: null, since: new Date().toISOString(), seen: [], codes: [] });
@@ -39,7 +81,7 @@ async function doPoll() {
   const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds"]);
   if (!st.token) return setStatus("No API token set");
   try {
-    const session = st.session ?? (await getSession(st.token));
+    const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
     if (!session.inboxId) {
       session.inboxId = (await listMailboxes(st.token, session)).find((x) => x.role === "inbox")?.id;
       if (!session.inboxId) throw new Error("no Inbox found");
