@@ -5,7 +5,7 @@
 const sent = [];
 window.chrome = { runtime: { sendMessage: (m) => sent.push(m) } };
 </script>
-<script src="../../fill.js"></script>
+<script src="../../src/content/fill.js"></script>
 <script>
 const F = globalThis.__mccFill, root = document.getElementById("root"), res = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

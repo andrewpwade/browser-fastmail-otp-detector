@@ -33,7 +33,7 @@ jobs:
       - name: Syntax and manifest checks
         run: |
           npm run check
-          python3 -c "import json; [json.load(open(f)) for f in ('manifest.json', 'manifest.firefox.json')]"
+          python3 -c "import json; [json.load(open(f)) for f in ('manifests/chrome.json', 'manifests/firefox.json')]"
 
       # Chromium (Playwright) and Firefox (Selenium, downloaded on first use) are cached between
       # runs; the key changes when the tool versions in package-lock.json change.

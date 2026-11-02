@@ -22,12 +22,12 @@
   ],
   "background": {
     "scripts": [
-      "background.js"
+      "background/background.js"
     ],
     "type": "module"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_title": "Mail Code Copy",
     "default_icon": {
       "16": "icons/16.png",
@@ -36,7 +36,7 @@
     }
   },
   "options_ui": {
-    "page": "options.html",
+    "page": "options/options.html",
     "open_in_tab": true
   },
   "browser_specific_settings": {

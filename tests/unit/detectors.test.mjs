@@ -2,8 +2,8 @@
 // One detector or case: node --test --test-name-pattern "v2" tests/detectors.test.mjs
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { DETECTORS } from "../../detectors/index.js";
-import { explain } from "../../detectors/v2.js";
+import { DETECTORS } from "../../src/detectors/index.js";
+import { explain } from "../../src/detectors/v2.js";
 import { cases } from "./corpus.mjs";
 
 // What v2 considered, to show on failure.

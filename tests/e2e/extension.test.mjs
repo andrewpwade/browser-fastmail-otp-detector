@@ -40,7 +40,7 @@ async function testCopy(build, base) {
     assert.notEqual(after, before, `test build: patching ${file} changed nothing`);
     await writeFile(join(dir, file), after);
   };
-  await patch("jmap.js", (s) => s.replace("https://api.fastmail.com/jmap/session", `${base}/jmap/session`));
+  await patch("background/jmap.js", (s) => s.replace("https://api.fastmail.com/jmap/session", `${base}/jmap/session`));
   await patch("manifest.json", (s) => JSON.stringify({ ...JSON.parse(s), host_permissions: ["<all_urls>"] }, null, 2));
   return dir;
 }
@@ -75,7 +75,7 @@ for (const [name, browser, build] of [["chromium", chromium, "chrome"], ["firefo
 
     // The popup's real fill code (filltab.js) on the tab at `url`: "filled", "nofield" or "mismatch".
     const fillTabAt = (url, site, anySite = false) => b.ext(async ({ url, site, anySite }) => {
-      const { fillTab } = await import("./filltab.js");
+      const { fillTab } = await import("/popup/fill-tab.js");
       const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
       return (await fillTab(tab.id, { code: "246810", id: "e2e", site }, { anySite })).status;
     }, { url, site, anySite });
@@ -83,7 +83,7 @@ for (const [name, browser, build] of [["chromium", chromium, "chrome"], ["firefo
     let first;
 
     test("connects: polls, stores the mail state and opens the push stream", async () => {
-      await b.ext(async (token) => (await import("./secret.js")).setToken(token), TOKEN); // as the setup page does
+      await b.ext(async (token) => (await import("/background/secret.js")).setToken(token), TOKEN); // as the setup page does
       const st = await waitFor(async () => { const s = await local(["status", "emailState"]); return s.emailState != null && s; }, "first poll");
       assert.match(st.status, /^OK/);
       await waitFor(() => server.streams > 0, "push stream connection");
@@ -106,7 +106,7 @@ for (const [name, browser, build] of [["chromium", chromium, "chrome"], ["firefo
     });
 
     test("the popup lists the code masked, and opening it clears the badge", async () => {
-      const p = await b.open(b.extUrl("popup.html"));
+      const p = await b.open(b.extUrl("popup/popup.html"));
       assert.equal(await p.text(".card .code"), `••••${first.code.slice(-2)}`);
       await p.click(".card .eye");
       assert.equal(await p.text(".card .code"), first.code, "the eye button reveals it");

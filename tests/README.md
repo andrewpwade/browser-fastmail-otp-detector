@@ -11,7 +11,7 @@ plain script: read it top to bottom.
 Each layer tests more of the real extension, and is slower, than the one above it.
 
 ```
- unit/         pure functions, no browser            otp, sites, frames, stream, detectors
+ unit/         pure functions, no browser            mask-code, sites, pick-frame, stream, detectors
    │
  background/   the real background.js in Node,       sync (finding mail), background (codes
    │           with fake chrome.* and fake Fastmail   offered, claimed, marked used)
@@ -35,7 +35,7 @@ Fakes, shared by the layers that need them (`fakes/`):
 | You changed…                              | Add a test to                                   |
 |-------------------------------------------|-------------------------------------------------|
 | code detection (`detectors/`)             | an email in `unit/corpus.mjs`                   |
-| a pure helper (`sites.js`, `otp.js`, …)   | `unit/<name>.test.mjs`                          |
+| a pure helper (`sites.js`, `mask-code.js`, …)   | `unit/<name>.test.mjs`                          |
 | finding new mail (`jmap.js`, polling)     | `background/sync.test.mjs`                      |
 | what happens to a code (`background.js`)  | `background/background.test.mjs`                |
 | finding or filling fields (`fill.js`)     | a line in `fill/fill.test.html`                 |
@@ -52,7 +52,7 @@ The e2e tests need a build (`npm run build`); `npm test` does it first.
 
 ## How the e2e tests reach the extension
 
-Each browser gets a temporary copy of `dist/<browser>` with two changes: `jmap.js` points at the
+Each browser gets a temporary copy of `dist/<browser>` with two changes: `background/jmap.js` points at the
 local fake Fastmail, and `host_permissions` is `<all_urls>` (what enabling on-page suggestions
 grants; the popup's own Fill relies on `activeTab`, which only a real toolbar click can grant).
 The shipped build is unchanged. The test Firefox is Selenium's own download in `~/.cache/selenium`,

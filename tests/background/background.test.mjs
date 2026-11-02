@@ -22,7 +22,7 @@ jmap.add(
     "Someone just logged in.\n\n203.0.113.45\n\nSecurity Documentation\n\nStorebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114", 1 * min),
 );
 localStore.codes = [{ id: "stale", code: "000111" }]; // left on disk by an older version
-await import("../../background.js");
+await import("../../src/background/background.js");
 localStore.token = "tok";
 localStore.detector = process.env.DETECTOR; // undefined: the default detector
 localStore.since = utc(10 * min);

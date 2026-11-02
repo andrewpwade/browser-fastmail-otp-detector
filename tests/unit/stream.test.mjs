@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { eventStream } from "../../jmap.js";
+import { eventStream } from "../../src/background/jmap.js";
 
 test("eventStream parses server-sent events split across chunks", async () => {
   const enc = new TextEncoder();
