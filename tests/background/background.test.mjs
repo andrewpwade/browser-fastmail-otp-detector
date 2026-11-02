@@ -34,6 +34,7 @@ test("a poll finds one code: the resend and the login notice don't count", async
   assert.equal(localStore.codes, undefined, "codes are removed from, and never written to, disk (local storage)");
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].title, "Login code: ••••52");
+  assert.equal(typeof localStore.token, "object", "the plain-text token was encrypted in passing, without resetting the codes");
 });
 
 // --- Offering codes to pages -------------------------------------------------------------------
@@ -52,6 +53,18 @@ test("a page on another site is offered nothing and can claim nothing", async ()
   assert.deepEqual(await send({ type: "latest" }, otherSite), []);
   assert.equal(await send({ type: "claim", id: "eu" }, otherSite), null);
   assert.deepEqual(await send({ type: "latest" }, { tab: { id: 3 } }), [], "no frame URL: nothing");
+});
+
+test("a frame can only claim a code it was just offered, and only a few times", async () => {
+  const stranger = { tab: { id: 9 }, url: tab.url };
+  assert.equal(await send({ type: "claim", id: "eu" }, stranger), null, "never offered anything");
+  await send({ type: "latest" }, stranger);
+  assert.equal(await send({ type: "claim", id: "nope" }, stranger), null, "not among the codes it was offered");
+  assert.equal(await send({ type: "claim", id: "eu" }, { ...stranger, frameId: 4 }), null, "another frame of the same tab");
+  for (let i = 0; i < 5; i++) assert.ok(await send({ type: "claim", id: "eu" }, stranger));
+  assert.equal(await send({ type: "claim", id: "eu" }, stranger), null, "sixth claim");
+  await send({ type: "latest" }, stranger);
+  assert.equal(await send({ type: "claim", id: "eu" }, stranger), null, "asking for the list again doesn't reset the limit");
 });
 
 test("claiming hands out the code without spending it", async () => {

@@ -83,10 +83,11 @@ for (const [name, browser, build] of [["chromium", chromium, "chrome"], ["firefo
     let first;
 
     test("connects: polls, stores the mail state and opens the push stream", async () => {
-      await b.ext((token) => chrome.storage.local.set({ token }), TOKEN);
+      await b.ext(async (token) => (await import("./secret.js")).setToken(token), TOKEN); // as the setup page does
       const st = await waitFor(async () => { const s = await local(["status", "emailState"]); return s.emailState != null && s; }, "first poll");
       assert.match(st.status, /^OK/);
       await waitFor(() => server.streams > 0, "push stream connection");
+      assert.ok(!JSON.stringify(await local("token")).includes(TOKEN), "the token is stored encrypted");
     });
 
     test("a pushed email produces a code, a notification and a badge", async () => {

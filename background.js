@@ -1,5 +1,6 @@
 import { catchUp, emailChanges, eventStream, getSession, listMailboxes, utc, utcNow } from "./jmap.js";
 import { maskCode, maskIn } from "./otp.js";
+import { getToken } from "./secret.js";
 import { emailFromJmap, getDetector } from "./detectors/index.js";
 import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
 import { sameSite, siteOfEmail, siteOfUrl } from "./sites.js";
@@ -29,6 +30,8 @@ chrome.storage.onChanged.addListener((c, area) => {
   if (area !== "local") return;
   if (c.suggest) syncSuggest();
   if (c.token) {
+    // Encrypting a plain-text token saved by an older version is not a new account.
+    if (typeof c.token.oldValue === "string" && typeof c.token.newValue === "object") return;
     streamAbort?.abort();
     if (!c.token.newValue) { // disconnected: leave storage as the user cleared it
       chrome.action.setBadgeText({ text: "" });
@@ -59,7 +62,8 @@ function ensureStream() {
 async function runStream() {
   let delay = 1000;
   for (;;) {
-    const { token, session } = await chrome.storage.local.get(["token", "session"]);
+    const token = await getToken();
+    const { session } = await chrome.storage.local.get("session");
     if (!token || !session?.eventSourceUrl) return; // the next poll fills the session in
     const ac = (streamAbort = new AbortController());
     const timer = setTimeout(() => ac.abort(), STREAM_MAX_MS);
@@ -95,28 +99,29 @@ const poll = () => serial(doPoll);
 // New mail is found with JMAP's Email/changes from the last seen state, so nothing is missed however
 // much arrives between polls or within the same second. Without a usable state (first run, or the
 // server forgot it) we catch up with a date query from `since` (the newest receivedAt seen) instead.
-async function newEmails(st, session, mailboxIds) {
+async function newEmails(st, token, session, mailboxIds) {
   if (st.emailState) {
     try {
-      return await emailChanges(st.token, session, st.emailState, mailboxIds, utc(Date.now() - KEEP_MS));
+      return await emailChanges(token, session, st.emailState, mailboxIds, utc(Date.now() - KEEP_MS));
     } catch (e) {
       if (e.type !== "cannotCalculateChanges") throw e;
     }
   }
-  return catchUp(st.token, session, st.since ?? utcNow(), mailboxIds);
+  return catchUp(token, session, st.since ?? utcNow(), mailboxIds);
 }
 
 async function doPoll() {
   try {
-    const st = await chrome.storage.local.get(["token", "session", "emailState", "since", "seen", "mailboxIds", "viewedAt", "detector"]);
-    if (!st.token) return setStatus("No API token set");
-    const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
+    const st = await chrome.storage.local.get(["session", "emailState", "since", "seen", "mailboxIds", "viewedAt", "detector"]);
+    const token = await getToken();
+    if (!token) return setStatus("No API token set");
+    const session = st.session?.eventSourceUrl ? st.session : await getSession(token);
     if (!session.inboxId) {
-      session.inboxId = (await listMailboxes(st.token, session)).find((x) => x.role === "inbox")?.id;
+      session.inboxId = (await listMailboxes(token, session)).find((x) => x.role === "inbox")?.id;
       if (!session.inboxId) throw new Error("no Inbox found");
     }
     const mailboxIds = st.mailboxIds?.length ? st.mailboxIds : [session.inboxId];
-    const { emails, state } = await newEmails(st, session, mailboxIds);
+    const { emails, state } = await newEmails(st, token, session, mailboxIds);
     const seen = new Set(st.seen ?? []);
     const codes = await getCodes();
     const detector = getDetector(st.detector);
@@ -232,16 +237,36 @@ async function markUsed(id) {
 
 // On-page suggestions: content scripts only ever get a masked code until the user clicks Fill, and
 // only codes for the site of the frame asking (from the browser, not the page: `sender.url`).
+//
+// A frame can only claim a code it was just offered (in its last "latest" reply), and only a few
+// times, so a frame can't enumerate or guess ids. `shown` (session storage) remembers, per frame,
+// what it was offered. A frame is the tab, the frame id and the document in it.
+const MAX_CLAIMS = 5;
+const frameKey = (s) => `${s.tab.id}:${s.frameId ?? 0}:${s.documentId ?? ""}`;
+
 async function suggest(msg, sender) {
   const codes = await getCodes();
   const pageSite = siteOfUrl(sender.url);
   const offerable = (c) => !c.used && Date.now() - c.at < OFFER_MS && sameSite(c.site, pageSite);
+  const { shown = {} } = await chrome.storage.session.get("shown");
+  for (const k of Object.keys(shown)) if (Date.now() - shown[k].at > OFFER_MS) delete shown[k]; // forget old frames
+  const key = frameKey(sender);
+
   if (msg.type === "latest") {
     // Newest first (codes are stored that way), without the codes themselves.
-    return codes.filter(offerable).map((c) => ({ id: c.id, masked: maskCode(c.code), from: c.from, at: c.at }));
+    const offers = codes.filter(offerable);
+    shown[key] = { ids: offers.map((c) => c.id), at: Date.now(), claims: shown[key]?.claims ?? 0 };
+    await chrome.storage.session.set({ shown });
+    return offers.map((c) => ({ id: c.id, masked: maskCode(c.code), from: c.from, at: c.at }));
   }
+
+  const entry = shown[key];
+  if (!entry || !entry.ids.includes(msg.id) || entry.claims >= MAX_CLAIMS) return null;
   const c = codes.find((x) => x.id === msg.id && offerable(x));
-  return c ? { code: c.code } : null;
+  if (!c) return null;
+  entry.claims++;
+  await chrome.storage.session.set({ shown });
+  return { code: c.code };
 }
 
 // Register the content script only while the user has opted in and granted site access.

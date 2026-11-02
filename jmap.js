@@ -21,13 +21,19 @@ async function req(url, token, body) {
   return res.json();
 }
 
-export async function getSession(token) {
+// With `readOnlyRequired`, refuses a token that could change or send mail: the extension only ever
+// reads, so it should never hold more. The refusal's `code` is "writable".
+export async function getSession(token, { readOnlyRequired = false } = {}) {
   const s = await req(SESSION_URL, token);
   const eventSourceUrl = s.eventSourceUrl
     ?.replace("{types}", "Email").replace("{closeafter}", "no").replace("{ping}", "20");
   const accountId = s.primaryAccounts?.[MAIL];
   if (!accountId) throw new Error("this token has no mail access");
-  return { apiUrl: s.apiUrl, accountId, eventSourceUrl };
+  const readOnly = s.accounts?.[accountId]?.isReadOnly === true;
+  if (readOnlyRequired && !readOnly) {
+    throw Object.assign(new Error("this token can change your mail. Create a read-only token instead"), { code: "writable" });
+  }
+  return { apiUrl: s.apiUrl, accountId, eventSourceUrl, readOnly };
 }
 
 export async function listMailboxes(token, { apiUrl, accountId }) {

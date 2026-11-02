@@ -41,7 +41,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "mail-code-copy@example.com",
+      "id": "{c1b8358c-dce8-4beb-84d8-9df8c7d5cc1e}",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": [
@@ -55,5 +55,8 @@
   },
   "optional_host_permissions": [
     "<all_urls>"
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none'"
+  }
 }

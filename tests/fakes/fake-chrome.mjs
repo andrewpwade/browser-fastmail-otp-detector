@@ -8,6 +8,7 @@
 //   poll()                     ask the background to check mail now
 //   listeners.updated(...)     fire chrome.tabs.onUpdated
 //   contentScript.hasCodeField what the page's content script answers when asked for a code field
+//   forgetKeys()               empty the fake IndexedDB, as if the profile moved to another machine
 import { jmap, mail, utc } from "./fake-jmap.mjs";
 
 export { jmap, mail, utc };
@@ -25,6 +26,42 @@ const area = (data) => ({
   set: async (o) => Object.assign(data, structuredClone(o)),
   remove: async (k) => { delete data[k]; },
 });
+
+// Just enough IndexedDB for secret.js (Node has none): open, createObjectStore, and get/put in a
+// transaction. Databases live in memory until forgetKeys().
+let databases = {};
+export const forgetKeys = () => { databases = {}; };
+globalThis.indexedDB = {
+  open(name) {
+    const request = {};
+    queueMicrotask(() => {
+      const isNew = !databases[name];
+      const stores = (databases[name] ??= {});
+      request.result = {
+        createObjectStore: (store) => (stores[store] = new Map()),
+        close() {},
+        transaction(store) {
+          const map = stores[store];
+          const tx = {
+            objectStore: () => ({
+              get(key) {
+                const r = {};
+                queueMicrotask(() => { r.result = map.get(key); r.onsuccess?.(); });
+                return r;
+              },
+              put: (value, key) => map.set(key, value),
+            }),
+          };
+          setTimeout(() => tx.oncomplete?.(), 0);
+          return tx;
+        },
+      };
+      if (isNew) request.onupgradeneeded?.();
+      request.onsuccess?.();
+    });
+    return request;
+  },
+};
 
 globalThis.chrome = {
   runtime: { onInstalled: noop, onStartup: noop, onMessage: { addListener: (f) => (listeners.message = f) }, getPlatformInfo() {}, openOptionsPage() {} },
