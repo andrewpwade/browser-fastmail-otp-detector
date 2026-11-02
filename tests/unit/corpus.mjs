@@ -7,6 +7,23 @@ export const text = (body, subject = "") => ({ subject, textBody: [{ type: "text
 // Like JMAP for an HTML-only message: textBody and htmlBody both point at the HTML part.
 export const html = (body, subject = "") => ({ subject, textBody: [{ type: "text/html", value: body }], htmlBody: [{ type: "text/html", value: body }] });
 
+// A CI notification (reported false positive): "otp" in the repo name, "code" in prose, and a commit hash.
+const ciBody = `[owner/browser-fastmail-otp-detector] CI workflow run
+
+Repository: owner/browser-fastmail-otp-detector
+Workflow: CI
+Duration: 1 minute and 2.0 seconds
+Finished: 2026-11-02 15:46:59 UTC
+
+View results: https://github.com/owner/browser-fastmail-otp-detector/actions/runs/41474801321
+
+Jobs:
+  * test failed (3 annotations)
+
+-- 
+You are receiving this because you are subscribed to this thread.`;
+const ciSubject = "[owner/browser-fastmail-otp-detector] PR run failed: CI - Only offer a code on the site that sent it; keep codes in memory only (92ec27b)";
+
 const storeboxHtml = `<html><head><title>Storebox Email</title></head><body>
 <p>This Storebox Authorization code is required for security purposes.</p>
 <h3>Storebox Authorization Code: <span style="color:blue">716052</span></h3>
@@ -221,6 +238,10 @@ export const cases = [
   ["uppercase word alone", text("Your verification code\n\nWELCOME\n"), { v2: null }],
   ["code in a link", html('<p>Verify your email: <a href="https://x.test/">482913</a></p>'), { v2: null }],
   ["footer number under code line", html("<p>Your code was sent.</p><p>Acme Inc, 2261 Elm Street, Suite 800</p><p>94114</p>"), { v2: null }],
+  ["CI notification with a commit hash in the subject", text(ciBody, ciSubject), { v2: null }],
+  ["git hash after a code mention", text("Review the code changes in commit 92ec27b before merging.\n\nThe verification build passed."), { v2: null }],
   ["new sign-in notice", html("<p>New sign-in to your account</p><p>Location: London</p><p>Time: 14:32</p><p>Device ID 448812</p>"), { v2: null }],
+  ["labelled lowercase hex code", text("Your verification code is 9f3a2c1e"), { v2: "9f3a2c1e" }],
+  ["code in brackets right after the label", text("Your verification code is (482913)"), { v2: "482913" }],
 
 ];
