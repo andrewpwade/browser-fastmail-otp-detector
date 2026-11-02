@@ -4,36 +4,58 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call: # release.yml runs exactly these checks before publishing
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run still going for the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+          cache: npm
 
-      - name: Install dev dependencies (Playwright)
+      - name: Install dev dependencies (Playwright, Selenium, web-ext)
         run: npm ci
 
-      - name: Install Chromium for the browser tests
-        run: npx playwright install --with-deps chromium
-
-      - name: Syntax check
-        run: npm run check
-
-      - name: Build and test (unit tests, then the extension in headless Chromium)
-        run: npm test
-
-      - name: Validate manifests
+      # Cheap checks first, so a typo fails in seconds rather than after the browsers install.
+      - name: Syntax and manifest checks
         run: |
+          npm run check
           python3 -c "import json; [json.load(open(f)) for f in ('manifest.json', 'manifest.firefox.json')]"
 
+      # Chromium (Playwright) and Firefox (Selenium, downloaded on first use) are cached between
+      # runs; the key changes when the tool versions in package-lock.json change.
+      - name: Cache test browsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/selenium
+          key: browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium and its system libraries
+        run: npx playwright install --with-deps chromium
+
+      - name: Build and test (unit, background, fill.js, then the extension in Chromium and Firefox)
+        run: npm test
+
       - name: Lint the Firefox build
-        run: npx --yes web-ext lint --source-dir dist/firefox
+        run: npx web-ext lint --source-dir dist/firefox
 
       - uses: actions/upload-artifact@v4
         with:
           name: mail-code-copy
           path: dist/*.zip
+          if-no-files-found: error
