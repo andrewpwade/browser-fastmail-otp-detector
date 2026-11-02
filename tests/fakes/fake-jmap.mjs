@@ -27,6 +27,7 @@ export function createJmap() {
     emails: [],
     calls: [], // [method, args] for every method call, in order
     forgetChanges: false, // answer Email/changes with cannotCalculateChanges
+    readOnly: true, // whether the API token can only read (Fastmail's "read-only" tokens)
     add(...ms) { this.emails.push(...ms); },
     get state() { return String(this.emails.length); },
     // ids whose full body was requested
@@ -67,6 +68,7 @@ export function createJmap() {
   jmap.session = (base) => ({
     apiUrl: `${base}/jmap`, eventSourceUrl: `${base}/events?types={types}&closeafter={closeafter}&ping={ping}`,
     primaryAccounts: { "urn:ietf:params:jmap:mail": "acc" },
+    accounts: { acc: { isReadOnly: jmap.readOnly } },
   });
 
   // Answers a JMAP API request body ({using, methodCalls}).

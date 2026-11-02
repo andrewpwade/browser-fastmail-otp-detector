@@ -23,6 +23,7 @@ Firefox. See [tests/README.md](tests/README.md) for the layout and where to add 
 - `otp.js` – code masking
 - `fill.js` – finds and fills code fields; `content.js` – optional on-page "Fill code" chip
 - `filltab.js`, `frames.js` – the popup's Fill: which frame of the tab may receive the code
+- `secret.js` – the API token, stored encrypted with a non-exportable key (IndexedDB)
 - `sites.js` – which website a code belongs to (the sender's registrable domain) and whether a page
   matches; `psl-data.js` is the Public Suffix List, regenerated with `node tools/update-psl.mjs`
 - `popup.*`, `options.*` – popup and setup wizard

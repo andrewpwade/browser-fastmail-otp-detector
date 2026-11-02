@@ -1,4 +1,5 @@
 import { getSession, listMailboxes } from "./jmap.js";
+import { getToken, setToken } from "./secret.js";
 const $ = (id) => document.getElementById(id);
 const say = (text, cls = "") => { $("msg").textContent = text; $("msg").className = cls; };
 
@@ -23,13 +24,13 @@ $("connect").onclick = async () => {
   if (!t) return say("Please paste your token first.", "err");
   say("Checking…");
   try {
-    await getSession(t);
-    await chrome.storage.local.set({ token: t });
+    await getSession(t, { readOnlyRequired: true });
+    await setToken(t);
     token = t;
     say("✓ Connected", "ok");
     setTimeout(() => go(3), 500);
   } catch (e) {
-    say(`Couldn't connect: ${e.message}. Check the token and try again.`, "err");
+    say(e.code === "writable" ? `Not saved: ${e.message}.` : `Couldn't connect: ${e.message}. Check the token and try again.`, "err");
   }
 };
 
@@ -100,7 +101,7 @@ $("disconnect").onclick = async (e) => {
   go(1);
 };
 
-chrome.storage.local.get("token").then((s) => {
-  token = s.token ?? null;
+getToken().then((t) => {
+  token = t;
   go(token ? 3 : 1); // returning users land on the folder step
 });
