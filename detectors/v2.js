@@ -224,6 +224,8 @@ const MD = "(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])", DM = "(?:0[1-9]|[12]\\d|
 const DATE8 = new RegExp(`^(?:(?:19|20)\\d\\d${MD}|${DM}(?:19|20)\\d\\d|${MD}(?:19|20)\\d\\d)$`);
 const isDateGroups = (groups) => groups.length === 3 && groups.some(isYear) && groups.filter((g) => !isYear(g)).every((g) => g.length <= 2 && +g <= 31);
 const VOWELS = /[aeiouy]/gi;
+// Short git hashes and similar ids: lowercase hex mixing digits and letters ("92ec27b").
+const HASH = /^(?=.*\d)(?=.*[a-f])[0-9a-f]{7,9}$/;
 
 // Letters-only tokens are accepted only when they look random rather than like a word.
 function randomLetters(s) {
@@ -296,14 +298,19 @@ function label(ctx) {
     const gap = ctx.slice(neg.end).trim();
     if (gap.length <= 15 && gap.split(/\s+/).length <= 2 && !/\d/.test(gap)) return { rejected: true };
   }
-  let best = 0;
+  // A candidate in brackets ("... keep codes in memory only (92ec27b)") is an aside, not what the
+  // anchor introduces, unless the anchor is right before it ("your code is (123456)").
+  const aside = /[(\[]\s*$/.test(ctx);
+  let best = 0, tight = false; // tight: an anchor within two words ("code is", "code:")
   for (const a of an) {
     const gap = ctx.slice(a.end);
     const words = gap.trim() ? gap.trim().split(/\s+/).length : 0;
     if (gap.length > 45 || words > 7 || /\d/.test(gap) || /[.!?](?=\s)/.test(gap)) continue;
+    if (aside && gap.replace(/[(\[]\s*$/, "").trim().split(/\s+/).filter(Boolean).length > 2) continue;
     best = Math.max(best, a.kind === "noun" ? W.nounLabel : W.topicLabel);
+    if (words <= 2) tight = true;
   }
-  return { score: best };
+  return { score: best, tight };
 }
 
 function candidatesIn(text) {
@@ -392,6 +399,7 @@ export function explain(email) {
       const lettersOnly = /^[A-Za-z]+$/.test(c.code);
       const labelled = lab.score >= W.nounLabel || after;
       if (f.year && !labelled) { f.reject = "year"; continue; }
+      if (HASH.test(c.code) && !(lab.tight && labelled || after)) { f.reject = "looks like a hash"; continue; } // needs a tight label
       if (lettersOnly && !alone && !labelled) { f.reject = "letters in a sentence"; continue; }
 
       f.features = {
