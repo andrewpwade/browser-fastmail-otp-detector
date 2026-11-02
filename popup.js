@@ -1,5 +1,6 @@
 import { maskCode } from "./otp.js";
 import { FRESH_MS, KEEP_MS } from "./constants.js";
+import { fillTab } from "./filltab.js";
 const $ = (id) => document.getElementById(id);
 
 function ago(t) {
@@ -28,12 +29,7 @@ async function fillActiveTab(code, id) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return false;
-    const target = { tabId: tab.id, allFrames: true };
-    await chrome.scripting.executeScript({ target, files: ["fill.js"] });
-    const res = await chrome.scripting.executeScript({
-      target, func: (c, i) => globalThis.__mccFill?.fill(c, true, i) ?? false, args: [code, id],
-    });
-    return res.some((r) => r.result);
+    return await fillTab(tab.id, code, id);
   } catch {
     return false; // restricted page (chrome://, store, PDF viewer…)
   }

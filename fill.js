@@ -1,7 +1,7 @@
 // Finds a login-code field on the page and fills it. Injected on demand (popup Fill button)
 // or registered as a content script when the user enables on-page suggestions.
 (() => {
-  if (globalThis.__mccFill) return;
+  if (globalThis.__mccFill?.probe) return; // already loaded (an older copy without probe() is replaced)
 
   const TEXTY = /^(text|tel|number|password|)$/i;
   const HINT = /otp|one.?time|verif|2fa|mfa|passcode|security.?code|auth\w*.?code|\btoken\b|\bpin\b|(^|[^a-z])code([^a-z]|$)/i;
@@ -145,5 +145,16 @@ const OTHER_AUTOCOMPLETE = /(^|\s)(username|email|tel|postal-code|new-password|c
     return true;
   }
 
-  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill, watch, onScreen };
+  // What this frame offers the popup's Fill button (see frames.js for how a frame is chosen).
+  function probe() {
+    const a = document.activeElement;
+    return {
+      origin: location.origin,
+      focused: !!targetFor(a, true), // the user's cursor is in a fillable box in this frame
+      focusInChild: a?.tagName === "IFRAME" || a?.tagName === "FRAME", // focus is inside a child frame
+      hasField: !!findTarget(false), // a recognisable code field, focused or not
+    };
+  }
+
+  globalThis.__mccFill = { targetFor, findTarget, fillEls, fill, watch, onScreen, probe };
 })();
