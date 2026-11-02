@@ -41,5 +41,8 @@
   "optional_host_permissions": [
     "<all_urls>"
   ],
-  "minimum_chrome_version": "116"
+  "minimum_chrome_version": "116",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none'"
+  }
 }
