@@ -37,5 +37,10 @@ t("onScreen: parent transparent", '<div style="opacity:0"><input name="otp"></di
 t("onScreen: off screen", '<input name="otp" style="position:fixed;left:-500px">', () => F.onScreen(document.querySelector("input")), (r) => r === false);
 t("onScreen: covered", '<input name="otp" style="position:fixed;top:10px;left:10px"><div style="position:fixed;top:0;left:0;width:300px;height:100px;background:red"></div>',
   () => F.onScreen(document.querySelector("input")), (r) => r === false);
+t("probe: focused code field", '<input name="otp">', () => { document.querySelector("input").focus(); return F.probe(); },
+  (r) => r.focused && r.hasField && !r.focusInChild && r.origin === location.origin);
+t("probe: unfocused code field", '<input name="otp">', () => { document.activeElement?.blur(); return F.probe(); }, (r) => !r.focused && r.hasField);
+t("probe: focus inside a child frame", '<iframe srcdoc="<input>"></iframe>', () => { document.querySelector("iframe").focus(); return F.probe(); },
+  (r) => r.focusInChild && !r.focused && !r.hasField);
 document.getElementById("out").textContent = res.join("\n");
 </script>

@@ -1,28 +1,24 @@
-// Runs every registered detector over the shared corpus. `node tests/detectors.test.mjs v2` runs one;
-// add --verbose to print v2's candidate scores for failing cases.
+// Every registered detector against the shared corpus (tests/corpus.mjs).
+// One detector or case: node --test --test-name-pattern "v2" tests/detectors.test.mjs
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 import { DETECTORS } from "../detectors/index.js";
 import { explain } from "../detectors/v2.js";
 import { cases } from "./corpus.mjs";
 
-const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const verbose = process.argv.includes("--verbose");
-let failed = 0;
+// What v2 considered, to show on failure.
+const candidates = (email) => explain(email).candidates
+  .map((c) => `  ${c.code} ${c.reject ?? c.score} ${JSON.stringify(c.text)}`).join("\n");
+
 for (const d of Object.values(DETECTORS)) {
-  if (only.length && !only.includes(d.id)) continue;
-  let ran = 0, bad = 0;
-  for (const [name, email, want] of cases) {
-    const exp = want && typeof want === "object" ? (d.id in want ? want[d.id] : want.default) : want;
-    if (exp === undefined) continue;
-    ran++;
-    const got = d.detect(email);
-    if (got === exp) continue;
-    bad++;
-    console.log(`FAIL ${d.id} ${name}: got ${got}, want ${exp}`);
-    if (verbose && d.id === "v2") {
-      for (const c of explain(email).candidates) console.log("   ", c.code, c.reject ?? c.score, c.features ?? "", JSON.stringify(c.text));
+  describe(d.id, () => {
+    for (const [name, email, want] of cases) {
+      const exp = want && typeof want === "object" ? (d.id in want ? want[d.id] : want.default) : want;
+      if (exp === undefined) continue; // not expected of this detector
+      test(name, () => {
+        const got = d.detect(email);
+        assert.equal(got, exp, d.id === "v2" && got !== exp ? `candidates:\n${candidates(email)}` : undefined);
+      });
     }
-  }
-  console.log(`${d.id}: ${ran - bad}/${ran} passed`);
-  failed += bad;
+  });
 }
-process.exit(failed ? 1 : 0);
