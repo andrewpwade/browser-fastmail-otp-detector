@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { codeMail } from "../fakes/fake-jmap.mjs";
 import { jmap, mail, notifications, poll, sessionStore, localStore, utc } from "../fakes/fake-chrome.mjs";
 
-await import("../../background.js");
+await import("../../src/background/background.js");
 localStore.token = "tok";
 localStore.since = utc(10 * 60000);
 

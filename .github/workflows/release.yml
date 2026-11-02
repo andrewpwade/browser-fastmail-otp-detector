@@ -14,7 +14,7 @@ jobs:
       - name: Tag must match manifest version
         run: |
           v="${GITHUB_REF_NAME#v}"
-          for m in manifest.json manifest.firefox.json; do
+          for m in manifests/chrome.json manifests/firefox.json; do
             [ "$(python3 -c "import json;print(json.load(open('$m'))['version'])")" = "$v" ] \
               || { echo "$m version != $v"; exit 1; }
           done

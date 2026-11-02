@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { forgetKeys, jmap, localStore } from "../fakes/fake-chrome.mjs";
-import { getSession } from "../../jmap.js";
-import { getToken, setToken } from "../../secret.js";
+import { getSession } from "../../src/background/jmap.js";
+import { getToken, setToken } from "../../src/background/secret.js";
 
 test("a saved token is stored as ciphertext and reads back", async () => {
   await setToken("fmu1-secret-token");

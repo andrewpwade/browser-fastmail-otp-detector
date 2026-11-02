@@ -25,7 +25,7 @@ export async function launch(extDir) {
   const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
   const extUrl = (path) => `chrome-extension://${new URL(sw.url()).host}/${path}`;
   const extPage = await context.newPage();
-  await extPage.goto(extUrl("options.html"));
+  await extPage.goto(extUrl("options/options.html"));
 
   return {
     extUrl,

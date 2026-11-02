@@ -1,6 +1,6 @@
-import { maskCode } from "./otp.js";
-import { FRESH_MS, KEEP_MS } from "./constants.js";
-import { fillTab } from "./filltab.js";
+import { maskCode } from "../shared/mask-code.js";
+import { FRESH_MS, KEEP_MS } from "../shared/constants.js";
+import { fillTab } from "./fill-tab.js";
 const $ = (id) => document.getElementById(id);
 
 function ago(t) {

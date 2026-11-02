@@ -1,9 +1,9 @@
 import { catchUp, emailChanges, eventStream, getSession, listMailboxes, utc, utcNow } from "./jmap.js";
-import { maskCode, maskIn } from "./otp.js";
+import { maskCode, maskIn } from "../shared/mask-code.js";
 import { getToken } from "./secret.js";
-import { emailFromJmap, getDetector } from "./detectors/index.js";
-import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
-import { sameSite, siteOfEmail, siteOfUrl } from "./sites.js";
+import { emailFromJmap, getDetector } from "../detectors/index.js";
+import { FRESH_MS, KEEP_MS, OFFER_MS } from "../shared/constants.js";
+import { sameSite, siteOfEmail, siteOfUrl } from "../shared/sites.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
@@ -174,7 +174,7 @@ function updateBadge(codes, viewedAt) {
 function notify(c) {
   chrome.notifications.create(`otp:${c.id}`, {
     type: "basic",
-    iconUrl: "icons/128.png",
+    iconUrl: "/icons/128.png",
     title: `Login code: ${maskCode(c.code)}`,
     message: `${c.from} — ${c.subject}`,
     ...(IS_CHROME && { buttons: [{ title: "Copy" }], requireInteraction: true }),
@@ -189,7 +189,7 @@ async function copy(text) {
   }
   if (!(await chrome.offscreen.hasDocument())) {
     await chrome.offscreen.createDocument({
-      url: "offscreen.html", reasons: ["CLIPBOARD"], justification: "Copy a login code to the clipboard when the user clicks a notification",
+      url: "/offscreen/offscreen.html", reasons: ["CLIPBOARD"], justification: "Copy a login code to the clipboard when the user clicks a notification",
     });
   }
   await chrome.runtime.sendMessage({ target: "offscreen", text });
@@ -281,7 +281,7 @@ async function doSyncSuggest() {
     try { await chrome.scripting.unregisterContentScripts({ ids: ["suggest"] }); } catch { /* not registered */ }
     if (granted) {
       await chrome.scripting.registerContentScripts([{
-        id: "suggest", matches: ["<all_urls>"], js: ["fill.js", "content.js"],
+        id: "suggest", matches: ["<all_urls>"], js: ["/content/fill.js", "/content/content.js"],
         allFrames: true, runAt: "document_idle", persistAcrossSessions: true,
       }]);
     }

@@ -3,12 +3,12 @@
 // (see sites.js) unless `anySite` is set. Used by the popup's Fill button; a module of its own so
 // the browser tests can run it against a real tab.
 // Returns {status: "filled" | "nofield"} or {status: "mismatch", pageSite}.
-import { pickFrame } from "./frames.js";
-import { sameSite, siteOfUrl } from "./sites.js";
+import { pickFrame } from "./pick-frame.js";
+import { sameSite, siteOfUrl } from "../shared/sites.js";
 
 export async function fillTab(tabId, { code, id, site }, { anySite = false } = {}) {
   const all = { tabId, allFrames: true };
-  await chrome.scripting.executeScript({ target: all, files: ["fill.js"] });
+  await chrome.scripting.executeScript({ target: all, files: ["/content/fill.js"] });
   const probes = await chrome.scripting.executeScript({ target: all, func: () => globalThis.__mccFill?.probe() ?? null });
   const pick = pickFrame(probes);
   if (!pick) return { status: "nofield" };

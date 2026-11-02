@@ -16,11 +16,11 @@
     "https://api.fastmail.com/*"
   ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background/background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_title": "Mail Code Copy",
     "default_icon": {
       "16": "icons/16.png",
@@ -29,7 +29,7 @@
     }
   },
   "options_ui": {
-    "page": "options.html",
+    "page": "options/options.html",
     "open_in_tab": true
   },
   "short_name": "Mail Code Copy",

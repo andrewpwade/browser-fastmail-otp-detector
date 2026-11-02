@@ -41,7 +41,7 @@ export async function launch(extDir) {
     await driver.get(url);
     return driver.getWindowHandle();
   };
-  const extTab = await newTab(extUrl("options.html"));
+  const extTab = await newTab(extUrl("options/options.html"));
 
   return {
     extUrl,

@@ -1,5 +1,5 @@
-import { getSession, listMailboxes } from "./jmap.js";
-import { getToken, setToken } from "./secret.js";
+import { getSession, listMailboxes } from "../background/jmap.js";
+import { getToken, setToken } from "../background/secret.js";
 const $ = (id) => document.getElementById(id);
 const say = (text, cls = "") => { $("msg").textContent = text; $("msg").className = cls; };
 
