@@ -34,6 +34,8 @@ Tests use Node's built-in test runner (`node:test`). Playwright is the only dev 
 - `otp.js` – code masking
 - `fill.js` – finds and fills code fields; `content.js` – optional on-page "Fill code" chip
 - `filltab.js`, `frames.js` – the popup's Fill: which frame of the tab may receive the code
+- `sites.js` – which website a code belongs to (the sender's registrable domain) and whether a page
+  matches; `psl-data.js` is the Public Suffix List, regenerated with `node tools/update-psl.mjs`
 - `popup.*`, `options.*` – popup and setup wizard
 - `manifest.json` (Chrome), `manifest.firefox.json` (Firefox)
 

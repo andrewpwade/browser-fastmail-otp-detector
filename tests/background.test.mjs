@@ -5,11 +5,14 @@ import { test } from "node:test";
 import { jmap, listeners, mail, notifications, page, poll, send, sessionStore, store, utc } from "./harness.mjs";
 
 const min = 60000;
-const tab = { tab: { id: 1 } };
+// A frame on the Storebox website (the sender of the test emails), and one on another site.
+const tab = { tab: { id: 1 }, url: "https://www.storebox.com/verify" };
+const otherSite = { tab: { id: 2 }, url: "https://storebox-login.com/verify" };
 const masked = (offers) => offers.map((o) => [o.from, o.masked]);
 const offers = async () => masked(await send({ type: "latest" }, tab));
-const code = (id) => store.codes.find((c) => c.id === id);
-const fresh = (id, at = Date.now() - 10000) => store.codes.unshift({ id, code: "999000", from: id, subject: "x", at });
+const codes = () => sessionStore.codes;
+const code = (id) => codes().find((c) => c.id === id);
+const fresh = (id, at = Date.now() - 10000) => codes().unshift({ id, code: "999000", from: id, site: "storebox.com", subject: "x", at });
 
 jmap.add(
   mail("m1", "Storebox Authorization Code", "Storebox Authorization Code: 716052", 3 * min),
@@ -17,6 +20,7 @@ jmap.add(
   mail("m3", "Storebox Account Login Notification",
     "Someone just logged in.\n\n203.0.113.45\n\nSecurity Documentation\n\nStorebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114", 1 * min),
 );
+store.codes = [{ id: "stale", code: "000111" }]; // left on disk by an older version
 await import("../background.js");
 store.token = "tok";
 store.detector = process.env.DETECTOR; // undefined: the default detector
@@ -25,37 +29,44 @@ store.since = utc(10 * min);
 test("a poll finds one code: the resend and the login notice don't count", async () => {
   await poll();
   assert.match(store.status, /^OK/);
-  assert.deepEqual(store.codes.map((c) => c.code), ["716052"]);
+  assert.deepEqual(codes().map((c) => [c.code, c.site]), [["716052", "storebox.com"]]);
+  assert.equal(store.codes, undefined, "codes are removed from, and never written to, disk (local storage)");
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].title, "Login code: ••••52");
 });
 
-test("pages are offered fresh codes, masked, newest first", async () => {
+test("pages are offered fresh codes for their site, masked, newest first", async () => {
   const one = await send({ type: "latest" }, tab);
   assert.deepEqual(masked(one), [["Storebox", "••••52"]]);
   assert.ok(!JSON.stringify(one).includes("716052"), "the full code must not be sent to pages");
 
-  store.codes.unshift({ id: "acme", code: "111222", from: "Acme", subject: "x", at: Date.now() - 30000 });
-  store.codes.push({ id: "old", code: "333444", from: "Slow", subject: "x", at: Date.now() - 6 * min });
-  assert.deepEqual(await offers(), [["Acme", "••••22"], ["Storebox", "••••52"]], "codes over 5 minutes old aren't offered");
+  codes().unshift({ id: "eu", code: "111222", from: "Storebox EU", site: "storebox.com", subject: "x", at: Date.now() - 30000 });
+  codes().push({ id: "old", code: "333444", from: "Slow", site: "storebox.com", subject: "x", at: Date.now() - 6 * min });
+  assert.deepEqual(await offers(), [["Storebox EU", "••••22"], ["Storebox", "••••52"]], "codes over 5 minutes old aren't offered");
+});
+
+test("a page on another site is offered nothing and can claim nothing", async () => {
+  assert.deepEqual(await send({ type: "latest" }, otherSite), []);
+  assert.equal(await send({ type: "claim", id: "eu" }, otherSite), null);
+  assert.deepEqual(await send({ type: "latest" }, { tab: { id: 3 } }), [], "no frame URL: nothing");
 });
 
 test("claiming hands out the code without spending it", async () => {
-  assert.deepEqual(await send({ type: "claim", id: "acme" }, tab), { code: "111222" });
-  assert.equal(code("acme").used, undefined);
+  assert.deepEqual(await send({ type: "claim", id: "eu" }, tab), { code: "111222" });
+  assert.equal(code("eu").used, undefined);
   assert.equal(await send({ type: "claim", id: "old" }, tab), null, "too old to claim");
 });
 
 test("a page confirming the code marks it used, and it is no longer offered", async () => {
   await send({ type: "confirmed", id: "m1" }, tab);
   assert.equal(code("m1").used, true);
-  assert.deepEqual(await offers(), [["Acme", "••••22"]]);
+  assert.deepEqual(await offers(), [["Storebox EU", "••••22"]]);
   assert.equal(await send({ type: "claim", id: "m1" }, tab), null);
 });
 
 test("only pages (tabs) may confirm", () => {
-  assert.notEqual(listeners.message({ type: "confirmed", id: "acme" }, {}, () => {}), true); // ignored: no async reply
-  assert.equal(code("acme").used, undefined);
+  assert.notEqual(listeners.message({ type: "confirmed", id: "eu" }, {}, () => {}), true); // ignored: no async reply
+  assert.equal(code("eu").used, undefined);
 });
 
 // After a submit the tab navigates; once the next page has loaded, the background decides.

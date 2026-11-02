@@ -11,20 +11,20 @@ export const listeners = {};
 export const page = { hasCodeField: false };
 const noop = { addListener() {} };
 
+// A chrome.storage area backed by a plain object.
+const area = (data) => ({
+  get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in data).map((k) => [k, structuredClone(data[k])])),
+  set: async (o) => Object.assign(data, structuredClone(o)),
+  remove: async (k) => { delete data[k]; },
+});
+
 globalThis.chrome = {
   runtime: { onInstalled: noop, onStartup: noop, onMessage: { addListener: (f) => (listeners.message = f) }, getPlatformInfo() {}, openOptionsPage() {} },
   permissions: { onRemoved: noop, contains: async () => false },
   storage: {
     onChanged: noop,
-    session: {
-      get: async (k) => (k in sessionStore ? { [k]: structuredClone(sessionStore[k]) } : {}),
-      set: async (o) => Object.assign(sessionStore, structuredClone(o)),
-    },
-    local: {
-      get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])),
-      set: async (o) => Object.assign(store, structuredClone(o)),
-      remove: async (k) => { delete store[k]; },
-    },
+    session: area(sessionStore),
+    local: area(store),
   },
   alarms: { create() {}, onAlarm: noop },
   action: { setBadgeText() {} },

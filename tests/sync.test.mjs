@@ -3,21 +3,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { codeMail } from "./fake-jmap.mjs";
-import { jmap, mail, notifications, poll, store, utc } from "./harness.mjs";
+import { jmap, mail, notifications, poll, sessionStore, store, utc } from "./harness.mjs";
 
 await import("../background.js");
 store.token = "tok";
 store.since = utc(10 * 60000);
 
 const min = 60000;
-const codeIds = () => store.codes.map((c) => c.id);
+const codeIds = () => sessionStore.codes.map((c) => c.id);
 const methods = () => jmap.calls.map(([name]) => name);
 
 test("the first poll remembers the server's mail state", async () => {
   await poll();
   assert.ok(store.status.startsWith("OK"), store.status);
   assert.equal(store.emailState, "0");
-  assert.deepEqual(store.codes, []);
+  assert.deepEqual(sessionStore.codes, []);
 });
 
 test("an email in the same second as the last one is not missed", async () => {

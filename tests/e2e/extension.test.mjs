@@ -62,18 +62,27 @@ const inSw = async (fn, arg) => {
   return sw.evaluate(fn, arg);
 };
 const local = (keys) => inSw((k) => chrome.storage.local.get(k), keys);
-const codes = async () => (await local("codes")).codes ?? [];
+const codes = async () => (await inSw(() => chrome.storage.session.get("codes"))).codes ?? [];
+const lookalike = base.replace("localhost", "127.0.0.1"); // another site serving the same pages
+
+// A code email from the test pages' own site (localhost), so its code may be offered there.
+const siteMail = () => {
+  const x = codeMail();
+  x.m.from = [{ name: "Local", email: "no-reply@localhost" }];
+  return x;
+};
 
 // Fill a tab using the popup's real fill code (filltab.js), run from an extension page.
 let extPage = null;
-async function fillTabAt(url, code) {
+// Returns the status: "filled", "nofield" or "mismatch".
+async function fillTabAt(url, site, anySite = false) {
   extPage ??= await context.newPage();
   if (!extPage.url().startsWith(ext(""))) await extPage.goto(ext("popup.html"));
-  return extPage.evaluate(async ({ url, code }) => {
+  return extPage.evaluate(async ({ url, site, anySite }) => {
     const { fillTab } = await import("./filltab.js");
     const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
-    return fillTab(tab.id, code, "e2e");
-  }, { url, code });
+    return (await fillTab(tab.id, { code: "246810", id: "e2e", site }, { anySite })).status;
+  }, { url, site, anySite });
 }
 
 // --- Tests --------------------------------------------------------------------------------------
@@ -87,7 +96,7 @@ test("connects: polls, stores the mail state and opens the push stream", async (
 });
 
 test("a pushed email produces a code, a notification and a badge", async () => {
-  first = codeMail();
+  first = siteMail();
   jmap.add(first.m);
   server.pushState();
   const [c] = await waitFor(async () => { const cs = await codes(); return cs.length && cs; }, "code from push");
@@ -127,6 +136,19 @@ test("on-page chip fills the code, and submitting it marks the code used", async
   await p.close();
 });
 
+test("a lookalike site gets no chip for the code", async () => {
+  const x = siteMail();
+  jmap.add(x.m);
+  server.pushState();
+  await waitFor(async () => (await codes()).some((c) => c.id === x.m.id), "new code");
+  const p = await context.newPage();
+  await p.goto(`${lookalike}/verify.html`);
+  await p.locator("input[name=otp]").focus();
+  await sleep(1500); // the chip would have appeared by now
+  assert.equal(await p.locator("html > div").count(), 0, "no chip");
+  await p.close();
+});
+
 test("two emails in the same second are both found", async () => {
   const a = codeMail(), b = codeMail();
   b.m.receivedAt = a.m.receivedAt;
@@ -138,12 +160,17 @@ test("two emails in the same second are both found", async () => {
   await waitFor(async () => (await codes()).some((c) => c.id === b.m.id), "second email, same second");
 });
 
-// The popup's Fill on pages with frames. `focus` is the frame to click into first.
+// The popup's Fill on pages with frames. Pages are on localhost; the third-party iframe is on
+// 127.0.0.1. `site` is the code's site, `focus` clicks into the iframe first.
 const fillCases = [
-  { name: "the page's own field, not a third-party iframe", page: "top-and-thirdparty.html", fills: "top" },
-  { name: "nothing when only a third-party iframe has a box", page: "thirdparty-only.html", fills: null },
-  { name: "a third-party iframe the user is typing in", page: "thirdparty-only.html", focus: true, fills: "frame" },
-  { name: "a code field in a same-origin iframe", page: "same-origin-frame.html", fills: "frame" },
+  { name: "the page's own field, not a third-party iframe", page: "top-and-thirdparty.html", want: "filled", fills: "top" },
+  { name: "nothing when only a third-party iframe has a box", page: "thirdparty-only.html", want: "nofield" },
+  { name: "a third-party iframe the user is typing in, on the code's site (e.g. a bank's card check)",
+    page: "thirdparty-only.html", site: "127.0.0.1", focus: true, want: "filled", fills: "frame" },
+  { name: "not a focused iframe on another site than the code's", page: "thirdparty-only.html", focus: true, want: "mismatch" },
+  { name: "a code field in a same-origin iframe", page: "same-origin-frame.html", want: "filled", fills: "frame" },
+  { name: "not a page on another site than the code's", page: "top-and-thirdparty.html", site: "example.com", want: "mismatch" },
+  { name: "Fill anyway: the user confirmed the warning", page: "top-and-thirdparty.html", site: "example.com", anySite: true, want: "filled", fills: "top" },
 ];
 for (const t of fillCases) {
   test(`Fill: ${t.name}`, async () => {
@@ -153,7 +180,7 @@ for (const t of fillCases) {
     const frame = p.frameLocator("#x").locator("#f");
     await frame.waitFor();
     if (t.focus) await frame.focus();
-    assert.equal(await fillTabAt(p.url(), "246810"), t.fills !== null);
+    assert.equal(await fillTabAt(p.url(), t.site ?? "localhost", t.anySite), t.want);
     assert.equal(await frame.inputValue(), t.fills === "frame" ? "246810" : "", "iframe box");
     if (await top.count()) assert.equal(await top.inputValue(), t.fills === "top" ? "246810" : "", "page field");
     await p.close();

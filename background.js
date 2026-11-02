@@ -2,11 +2,18 @@ import { catchUp, emailChanges, eventStream, getSession, listMailboxes, utc, utc
 import { maskCode, maskIn } from "./otp.js";
 import { emailFromJmap, getDetector } from "./detectors/index.js";
 import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
+import { sameSite, siteOfEmail, siteOfUrl } from "./sites.js";
 
 const ALARM = "poll";
 const MAX_CODES = 20;
 const STREAM_MAX_MS = 4 * 60 * 1000;
 const IS_CHROME = !!chrome.offscreen; // Firefox has no offscreen API, notification buttons or requireInteraction
+
+// Codes live only in session storage: in memory, never written to disk, and readable only by the
+// extension's own pages (not content scripts). They expire within the hour anyway.
+const getCodes = async () => (await chrome.storage.session.get("codes")).codes ?? [];
+const setCodes = (codes) => chrome.storage.session.set({ codes });
+chrome.storage.local.remove("codes"); // older versions kept them on disk
 
 chrome.runtime.onInstalled.addListener((d) => {
   schedule();
@@ -75,7 +82,8 @@ async function runStream() {
 
 async function reset() {
   await chrome.storage.local.remove("mailboxIds"); // folder ids belong to the previous account
-  await chrome.storage.local.set({ session: null, emailState: null, since: utcNow(), seen: [], codes: [] });
+  await chrome.storage.local.set({ session: null, emailState: null, since: utcNow(), seen: [] });
+  await setCodes([]);
 }
 
 // Run storage-touching work one at a time, so overlapping triggers
@@ -100,7 +108,7 @@ async function newEmails(st, session, mailboxIds) {
 
 async function doPoll() {
   try {
-    const st = await chrome.storage.local.get(["token", "session", "emailState", "since", "seen", "codes", "mailboxIds", "viewedAt", "detector"]);
+    const st = await chrome.storage.local.get(["token", "session", "emailState", "since", "seen", "mailboxIds", "viewedAt", "detector"]);
     if (!st.token) return setStatus("No API token set");
     const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
     if (!session.inboxId) {
@@ -110,7 +118,7 @@ async function doPoll() {
     const mailboxIds = st.mailboxIds?.length ? st.mailboxIds : [session.inboxId];
     const { emails, state } = await newEmails(st, session, mailboxIds);
     const seen = new Set(st.seen ?? []);
-    const codes = st.codes ?? [];
+    const codes = await getCodes();
     const detector = getDetector(st.detector);
     let newest = st.since ?? utcNow();
 
@@ -125,15 +133,20 @@ async function doPoll() {
       if (!code) continue;
       // Services often send the same code twice (a resend, or a duplicate email): only the first counts.
       if (codes.some((c) => c.code === code && Math.abs(c.at - at) < FRESH_MS)) continue;
-      const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
+      const sender = m.from?.[0];
+      const from = sender?.name || sender?.email || "";
+      // `site`: the website the code is for, judged by the sender's domain. Codes are only offered
+      // on pages of that site.
+      const site = siteOfEmail(sender?.email);
       // Subjects often contain the code itself ("123456 is your code"), so mask it there too.
-      codes.unshift({ id: m.id, code, from, subject: maskIn(m.subject ?? "", code), at });
+      codes.unshift({ id: m.id, code, from, site, subject: maskIn(m.subject ?? "", code), at });
       // Only pop up for fresh mail, not a backlog found after the browser was closed.
       if (Date.now() - at < FRESH_MS) notify(codes[0]);
     }
     const kept = codes.filter((c) => Date.now() - c.at < KEEP_MS).sort((a, b) => b.at - a.at).slice(0, MAX_CODES);
+    await setCodes(kept);
     await chrome.storage.local.set({
-      session, emailState: state, since: newest, seen: [...seen].slice(-200), codes: kept,
+      session, emailState: state, since: newest, seen: [...seen].slice(-200),
       status: `OK ${new Date().toLocaleTimeString()}`,
     });
     updateBadge(kept, st.viewedAt ?? 0);
@@ -179,7 +192,7 @@ async function copy(text) {
 
 function onNotifyAction(id) {
   if (!id.startsWith("otp:")) return;
-  chrome.storage.local.get("codes").then(({ codes = [] }) => {
+  getCodes().then((codes) => {
     const c = codes.find((x) => x.id === id.slice(4));
     if (c) copy(c.code);
   });
@@ -202,7 +215,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true;
   }
   if ((msg.type === "latest" || msg.type === "claim") && sender.tab) {
-    serial(() => suggest(msg)).then(reply, () => reply(null));
+    serial(() => suggest(msg, sender)).then(reply, () => reply(null));
     return true;
   }
 });
@@ -210,17 +223,19 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 // A code is only spent once it was submitted and the site accepted it. A spent code stays in the
 // popup list (dimmed) but is never offered on pages again.
 async function markUsed(id) {
-  const { codes = [] } = await chrome.storage.local.get("codes");
+  const codes = await getCodes();
   const c = codes.find((x) => x.id === id);
   if (!c || c.used) return;
   c.used = true;
-  await chrome.storage.local.set({ codes });
+  await setCodes(codes);
 }
 
-// On-page suggestions: content scripts only ever get a masked code until the user clicks Fill.
-async function suggest(msg) {
-  const { codes = [] } = await chrome.storage.local.get("codes");
-  const offerable = (c) => !c.used && Date.now() - c.at < OFFER_MS;
+// On-page suggestions: content scripts only ever get a masked code until the user clicks Fill, and
+// only codes for the site of the frame asking (from the browser, not the page: `sender.url`).
+async function suggest(msg, sender) {
+  const codes = await getCodes();
+  const pageSite = siteOfUrl(sender.url);
+  const offerable = (c) => !c.used && Date.now() - c.at < OFFER_MS && sameSite(c.site, pageSite);
   if (msg.type === "latest") {
     // Newest first (codes are stored that way), without the codes themselves.
     return codes.filter(offerable).map((c) => ({ id: c.id, masked: maskCode(c.code), from: c.from, at: c.at }));
