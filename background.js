@@ -1,5 +1,6 @@
 import { eventStream, getSession, listMailboxes, recentEmails, utcNow } from "./jmap.js";
-import { extractCode, htmlToText, maskCode, maskIn } from "./otp.js";
+import { maskCode, maskIn } from "./otp.js";
+import { emailFromJmap, getDetector } from "./detectors/index.js";
 import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
 
 const ALARM = "poll";
@@ -83,17 +84,9 @@ let chain = Promise.resolve();
 const serial = (fn) => (chain = chain.then(fn, fn));
 const poll = () => serial(doPoll);
 
-function bodyText(m) {
-  const parts = (m.textBody ?? []).map((p) => {
-    const v = m.bodyValues?.[p.partId]?.value ?? "";
-    return p.type === "text/html" ? htmlToText(v) : v;
-  });
-  return parts.join(" ") || m.preview || "";
-}
-
 async function doPoll() {
   try {
-    const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds", "viewedAt"]);
+    const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds", "viewedAt", "detector"]);
     if (!st.token) return setStatus("No API token set");
     const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
     if (!session.inboxId) {
@@ -105,13 +98,14 @@ async function doPoll() {
     const seen = new Set(st.seen ?? []);
     const emails = await recentEmails(st.token, session, since, mailboxIds);
     const codes = st.codes ?? [];
+    const detector = getDetector(st.detector);
     let newest = since;
 
     for (const m of emails.reverse()) {
       if (m.receivedAt > newest) newest = m.receivedAt;
       if (seen.has(m.id)) continue;
       seen.add(m.id);
-      const code = extractCode(`${m.subject ?? ""}\n${bodyText(m)}`);
+      const code = detector.detect(emailFromJmap(m));
       if (!code) continue;
       const at = Date.parse(m.receivedAt);
       // Services often send the same code twice (a resend, or a duplicate email): only the first counts.

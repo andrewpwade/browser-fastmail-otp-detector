@@ -55,6 +55,7 @@ globalThis.fetch = async (url, opts = {}) => {
 
 await import("../background.js");
 store.token = "tok";
+if (process.env.DETECTOR) store.detector = process.env.DETECTOR; // run under a specific detector
 store.since = utc(10 * 60000);
 
 const poll = () => new Promise((resolve) => listeners.message({ type: "poll" }, {}, resolve));

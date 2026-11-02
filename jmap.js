@@ -52,8 +52,9 @@ export async function recentEmails(token, { apiUrl, accountId }, since, mailboxI
       ["Email/get", {
         accountId,
         "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
-        properties: ["id", "subject", "preview", "from", "receivedAt", "textBody", "bodyValues"],
+        properties: ["id", "subject", "preview", "from", "receivedAt", "textBody", "htmlBody", "bodyValues"],
         fetchTextBodyValues: true,
+        fetchHTMLBodyValues: true,
         maxBodyValueBytes: 256000,
       }, "g"],
     ],
