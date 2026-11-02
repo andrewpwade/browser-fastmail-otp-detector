@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -38,7 +38,7 @@ jobs:
       # Chromium (Playwright) and Firefox (Selenium, downloaded on first use) are cached between
       # runs; the key changes when the tool versions in package-lock.json change.
       - name: Cache test browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/ms-playwright
@@ -54,7 +54,7 @@ jobs:
       - name: Lint the Firefox build
         run: npx web-ext lint --source-dir dist/firefox
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mail-code-copy
           path: dist/*.zip
