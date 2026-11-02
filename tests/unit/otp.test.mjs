@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { maskCode, maskIn } from "../otp.js";
+import { maskCode, maskIn } from "../../otp.js";
 
 test("maskCode keeps only the last digits", () => {
   assert.equal(maskCode("482913"), "••••13");

@@ -1,8 +1,9 @@
-// The real background.js against a stubbed chrome.* and the fake Fastmail (tests/harness.mjs).
+// The real background.js against a fake chrome.* and a fake Fastmail (tests/fakes/). Covers what
+// happens to a code after it is found: notifications, offers to pages, claiming, marking used.
 // The tests share one extension instance and run in order.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { jmap, listeners, mail, notifications, page, poll, send, sessionStore, store, utc } from "./harness.mjs";
+import { contentScript, jmap, listeners, mail, notifications, poll, send, sessionStore, localStore, utc } from "../fakes/fake-chrome.mjs";
 
 const min = 60000;
 // A frame on the Storebox website (the sender of the test emails), and one on another site.
@@ -20,20 +21,22 @@ jmap.add(
   mail("m3", "Storebox Account Login Notification",
     "Someone just logged in.\n\n203.0.113.45\n\nSecurity Documentation\n\nStorebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114", 1 * min),
 );
-store.codes = [{ id: "stale", code: "000111" }]; // left on disk by an older version
-await import("../background.js");
-store.token = "tok";
-store.detector = process.env.DETECTOR; // undefined: the default detector
-store.since = utc(10 * min);
+localStore.codes = [{ id: "stale", code: "000111" }]; // left on disk by an older version
+await import("../../background.js");
+localStore.token = "tok";
+localStore.detector = process.env.DETECTOR; // undefined: the default detector
+localStore.since = utc(10 * min);
 
 test("a poll finds one code: the resend and the login notice don't count", async () => {
   await poll();
-  assert.match(store.status, /^OK/);
+  assert.match(localStore.status, /^OK/);
   assert.deepEqual(codes().map((c) => [c.code, c.site]), [["716052", "storebox.com"]]);
-  assert.equal(store.codes, undefined, "codes are removed from, and never written to, disk (local storage)");
+  assert.equal(localStore.codes, undefined, "codes are removed from, and never written to, disk (local storage)");
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].title, "Login code: ••••52");
 });
+
+// --- Offering codes to pages -------------------------------------------------------------------
 
 test("pages are offered fresh codes for their site, masked, newest first", async () => {
   const one = await send({ type: "latest" }, tab);
@@ -69,13 +72,14 @@ test("only pages (tabs) may confirm", () => {
   assert.equal(code("eu").used, undefined);
 });
 
+// --- Marking a code used after a full page navigation -----------------------------------------
 // After a submit the tab navigates; once the next page has loaded, the background decides.
 async function navigate({ id, from = "https://x.test/verify", to = "https://x.test/home", hasField = false, loadingAfterMs = 500, completeAfterMs = 2000, tabId = 7, submit = true }) {
   fresh(id);
   if (submit) await send({ type: "submitted", id, url: from }, { tab: { id: tabId } });
   const age = (ms) => { if (sessionStore.pending?.[tabId]) sessionStore.pending[tabId].at -= ms; };
   age(loadingAfterMs);
-  page.hasCodeField = hasField;
+  contentScript.hasCodeField = hasField;
   await listeners.updated(tabId, { status: "loading" }, {});
   age(completeAfterMs);
   await listeners.updated(tabId, { status: "complete" }, to ? { url: to } : {});
@@ -94,7 +98,7 @@ test("navigation without a submit: not used", async () => assert.equal(await nav
 test("submit, loading and complete arriving together (a fast page): used", async () => {
   // Chrome doesn't wait for one listener to finish before firing the next. Found by the browser tests.
   fresh("n9");
-  page.hasCodeField = false;
+  contentScript.hasCodeField = false;
   await Promise.all([
     send({ type: "submitted", id: "n9", url: "https://x.test/verify" }, { tab: { id: 8 } }),
     listeners.updated(8, { status: "loading" }, {}),

@@ -1,7 +1,7 @@
 // Which frame the popup's Fill button may fill.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pickFrame } from "../frames.js";
+import { pickFrame } from "../../frames.js";
 
 const SITE = "https://login.example.com", AD = "https://ads.example.net";
 const f = (frameId, origin, flags = {}) => ({

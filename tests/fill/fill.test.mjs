@@ -1,4 +1,4 @@
-// fill.js in real Chromium: runs the cases in tests/fill.test.html and tests/watch.test.html
+// fill.js in real Chromium: runs the cases in tests/fill/fill.test.html and watch.test.html
 // (which print a PASS/FAIL line each) and reports every line as a test.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { chromium } from "playwright";
 
-const ROOT = join(import.meta.dirname, "..");
+const ROOT = join(import.meta.dirname, "..", "..");
 
 async function runPage(page, name) {
-  await page.goto(`http://repo.test/tests/${name}.test.html`);
+  await page.goto(`http://repo.test/tests/fill/${name}.test.html`);
   await page.clock.runFor(60000);
   await page.waitForFunction(() => document.getElementById("out").textContent !== "running");
   return (await page.locator("#out").textContent()).split("\n").filter(Boolean);

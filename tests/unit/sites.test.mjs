@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sameSite, site, siteOfEmail, siteOfUrl } from "../sites.js";
+import { sameSite, site, siteOfEmail, siteOfUrl } from "../../sites.js";
 
 test("site is the registrable domain", () => {
   assert.equal(site("example.com"), "example.com");
