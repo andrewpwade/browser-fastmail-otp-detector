@@ -14,18 +14,21 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install dev dependencies (Playwright)
+        run: npm ci
+
+      - name: Install Chromium for the browser tests
+        run: npx playwright install --with-deps chromium
+
       - name: Syntax check
         run: npm run check
 
-      - name: Tests (code detection, push stream, field filling in headless Chrome)
+      - name: Build and test (unit tests, then the extension in headless Chromium)
         run: npm test
 
       - name: Validate manifests
         run: |
           python3 -c "import json; [json.load(open(f)) for f in ('manifest.json', 'manifest.firefox.json')]"
-
-      - name: Build both browsers
-        run: npm run build
 
       - name: Lint the Firefox build
         run: npx --yes web-ext lint --source-dir dist/firefox

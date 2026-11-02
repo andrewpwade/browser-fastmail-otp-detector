@@ -1,4 +1,4 @@
-import { eventStream, getSession, listMailboxes, recentEmails, utcNow } from "./jmap.js";
+import { catchUp, emailChanges, eventStream, getSession, listMailboxes, utc, utcNow } from "./jmap.js";
 import { maskCode, maskIn } from "./otp.js";
 import { emailFromJmap, getDetector } from "./detectors/index.js";
 import { FRESH_MS, KEEP_MS, OFFER_MS } from "./constants.js";
@@ -75,7 +75,7 @@ async function runStream() {
 
 async function reset() {
   await chrome.storage.local.remove("mailboxIds"); // folder ids belong to the previous account
-  await chrome.storage.local.set({ session: null, since: utcNow(), seen: [], codes: [] });
+  await chrome.storage.local.set({ session: null, emailState: null, since: utcNow(), seen: [], codes: [] });
 }
 
 // Run storage-touching work one at a time, so overlapping triggers
@@ -84,9 +84,23 @@ let chain = Promise.resolve();
 const serial = (fn) => (chain = chain.then(fn, fn));
 const poll = () => serial(doPoll);
 
+// New mail is found with JMAP's Email/changes from the last seen state, so nothing is missed however
+// much arrives between polls or within the same second. Without a usable state (first run, or the
+// server forgot it) we catch up with a date query from `since` (the newest receivedAt seen) instead.
+async function newEmails(st, session, mailboxIds) {
+  if (st.emailState) {
+    try {
+      return await emailChanges(st.token, session, st.emailState, mailboxIds, utc(Date.now() - KEEP_MS));
+    } catch (e) {
+      if (e.type !== "cannotCalculateChanges") throw e;
+    }
+  }
+  return catchUp(st.token, session, st.since ?? utcNow(), mailboxIds);
+}
+
 async function doPoll() {
   try {
-    const st = await chrome.storage.local.get(["token", "session", "since", "seen", "codes", "mailboxIds", "viewedAt", "detector"]);
+    const st = await chrome.storage.local.get(["token", "session", "emailState", "since", "seen", "codes", "mailboxIds", "viewedAt", "detector"]);
     if (!st.token) return setStatus("No API token set");
     const session = st.session?.eventSourceUrl ? st.session : await getSession(st.token);
     if (!session.inboxId) {
@@ -94,32 +108,32 @@ async function doPoll() {
       if (!session.inboxId) throw new Error("no Inbox found");
     }
     const mailboxIds = st.mailboxIds?.length ? st.mailboxIds : [session.inboxId];
-    const since = st.since ?? utcNow();
+    const { emails, state } = await newEmails(st, session, mailboxIds);
     const seen = new Set(st.seen ?? []);
-    const emails = await recentEmails(st.token, session, since, mailboxIds);
     const codes = st.codes ?? [];
     const detector = getDetector(st.detector);
-    let newest = since;
+    let newest = st.since ?? utcNow();
 
-    for (const m of emails.reverse()) {
+    emails.sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : 0)); // oldest first
+    for (const m of emails) {
       if (m.receivedAt > newest) newest = m.receivedAt;
       if (seen.has(m.id)) continue;
       seen.add(m.id);
+      const at = Date.parse(m.receivedAt);
+      if (Date.now() - at > KEEP_MS) continue; // too old to be useful
       const code = detector.detect(emailFromJmap(m));
       if (!code) continue;
-      const at = Date.parse(m.receivedAt);
       // Services often send the same code twice (a resend, or a duplicate email): only the first counts.
       if (codes.some((c) => c.code === code && Math.abs(c.at - at) < FRESH_MS)) continue;
-      if (Date.now() - at > KEEP_MS) continue; // too old to be useful
       const from = m.from?.[0]?.name || m.from?.[0]?.email || "";
       // Subjects often contain the code itself ("123456 is your code"), so mask it there too.
       codes.unshift({ id: m.id, code, from, subject: maskIn(m.subject ?? "", code), at });
       // Only pop up for fresh mail, not a backlog found after the browser was closed.
       if (Date.now() - at < FRESH_MS) notify(codes[0]);
     }
-    const kept = codes.filter((c) => Date.now() - c.at < KEEP_MS).slice(0, MAX_CODES);
+    const kept = codes.filter((c) => Date.now() - c.at < KEEP_MS).sort((a, b) => b.at - a.at).slice(0, MAX_CODES);
     await chrome.storage.local.set({
-      session, since: newest, seen: [...seen].slice(-100), codes: kept,
+      session, emailState: state, since: newest, seen: [...seen].slice(-200), codes: kept,
       status: `OK ${new Date().toLocaleTimeString()}`,
     });
     updateBadge(kept, st.viewedAt ?? 0);
@@ -248,30 +262,41 @@ const sameDocument = (a, b) => {
   return key(a) === key(b);
 };
 
-async function setPending(tabId, entry) {
+// Submits and tab updates arrive in quick succession (a fast page fires "loading" and "complete"
+// almost together), and each one reads, changes and writes `pending`. They run one at a time so
+// no update is lost.
+let pendingChain = Promise.resolve();
+const withPending = (fn) => (pendingChain = pendingChain.then(async () => {
   const { pending = {} } = await chrome.storage.session.get("pending");
-  pending[tabId] = entry;
+  const result = fn(pending);
   await chrome.storage.session.set({ pending });
+  return result;
+}).catch((e) => console.warn("Couldn't track a submitted code", e)));
+
+function setPending(tabId, entry) {
+  return withPending((pending) => { pending[tabId] = entry; });
+}
+
+// Returns the pending entry to decide on once the next page has loaded, or null.
+function onTabStatus(tabId, status) {
+  return withPending((pending) => {
+    const p = pending[tabId];
+    if (!p) return null;
+    if (status === "loading") {
+      if (Date.now() - p.at < NAVIGATE_MS) p.armed = true; // the submit turned into a navigation
+      else delete pending[tabId]; // some later, unrelated navigation
+      return null;
+    }
+    if (!p.armed) return null; // finished loading without navigating after the submit: nothing to decide
+    delete pending[tabId];
+    return p;
+  });
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.status !== "loading" && info.status !== "complete") return;
-  const { pending = {} } = await chrome.storage.session.get("pending");
-  const p = pending[tabId];
-  if (!p) return;
-  const age = Date.now() - p.at;
-
-  if (info.status === "loading") {
-    if (age < NAVIGATE_MS) p.armed = true; // the submit turned into a navigation
-    else delete pending[tabId]; // some later, unrelated navigation
-    await chrome.storage.session.set({ pending });
-    return;
-  }
-
-  if (!p.armed) return; // finished loading without navigating after the submit: nothing to decide
-  delete pending[tabId];
-  await chrome.storage.session.set({ pending });
-  if (age > PENDING_MS || !tab.url || sameDocument(tab.url, p.url)) return;
+  const p = await onTabStatus(tabId, info.status);
+  if (!p || Date.now() - p.at > PENDING_MS || !tab.url || sameDocument(tab.url, p.url)) return;
   const hasCodeField = await chrome.tabs.sendMessage(tabId, { type: "hasCodeField" }, { frameId: 0 }).catch(() => false);
   if (!hasCodeField) await serial(() => markUsed(p.id));
 });
