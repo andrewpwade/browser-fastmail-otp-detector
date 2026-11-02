@@ -25,13 +25,13 @@ async function copy(code, btn) {
   setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1500);
 }
 
-async function fillActiveTab(code, id) {
+async function fillActiveTab(c, options) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return false;
-    return await fillTab(tab.id, code, id);
+    if (!tab?.id) return { status: "nofield" };
+    return await fillTab(tab.id, c, options);
   } catch {
-    return false; // restricted page (chrome://, store, PDF viewer…)
+    return { status: "nofield" }; // restricted page (chrome://, store, PDF viewer…)
   }
 }
 
@@ -43,7 +43,8 @@ function empty(big, title, sub, action) {
 }
 
 async function render() {
-  const { token, codes = [], status = "" } = await chrome.storage.local.get(["token", "codes", "status"]);
+  const { token, status = "" } = await chrome.storage.local.get(["token", "status"]);
+  const { codes = [] } = await chrome.storage.session.get("codes");
   const list = $("list");
   list.replaceChildren();
   const isErr = status.startsWith("Error");
@@ -84,9 +85,24 @@ async function render() {
     const btn = el("button", "copy", "Copy");
     const fill = el("button", "fill", "Fill");
     fill.title = "Fill the code field on the current page";
+    // A page on another site than the code's sender needs a second, warned click (anti-phishing).
+    let confirmUntil = 0;
+    const warning = el("div", "warn");
     fill.onclick = async (e) => {
       e.stopPropagation();
-      if (await fillActiveTab(c.code, c.id)) {
+      const anySite = Date.now() < confirmUntil;
+      const r = await fillActiveTab(c, { anySite });
+      warning.remove();
+      if (r.status === "mismatch") {
+        warning.textContent = `⚠ This code is from ${c.site ?? "an unknown sender"}, but this page is ${r.pageSite ?? "unknown"}. Only fill it if you trust this page.`;
+        info.append(warning);
+        fill.textContent = "Fill anyway?";
+        confirmUntil = Date.now() + 5000;
+        setTimeout(() => { if (Date.now() >= confirmUntil) { fill.textContent = "Fill"; warning.remove(); } }, 5100);
+        return;
+      }
+      confirmUntil = 0;
+      if (r.status === "filled") {
         fill.textContent = "Filled ✓";
       } else {
         await copy(c.code, btn); // nothing to fill here, so copy instead
@@ -108,8 +124,8 @@ $("refresh").onclick = async (e) => {
 };
 // Re-render only when something visible changed, so a routine poll doesn't re-hide a revealed code.
 const errored = (s) => !!s?.startsWith("Error");
-chrome.storage.onChanged.addListener((c) => {
-  if (c.codes || c.token || (c.status && errored(c.status.newValue) !== errored(c.status.oldValue))) render();
+chrome.storage.onChanged.addListener((c, area) => {
+  if ((area === "session" && c.codes) || c.token || (c.status && errored(c.status.newValue) !== errored(c.status.oldValue))) render();
 });
 chrome.storage.local.set({ viewedAt: Date.now() }); // opening the popup counts as seeing new codes
 chrome.action.setBadgeText({ text: "" });

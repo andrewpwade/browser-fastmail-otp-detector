@@ -91,6 +91,7 @@ $("disconnect").onclick = async (e) => {
   e.preventDefault();
   if (!confirm("Remove your token and all saved codes from this browser?")) return;
   await chrome.storage.local.clear();
+  await chrome.storage.session.clear();
   await chrome.permissions.remove({ origins: ["<all_urls>"] }).catch(() => {});
   $("suggest").checked = false;
   token = null;

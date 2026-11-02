@@ -4,12 +4,13 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { jmap } from "../fake-jmap.mjs";
+import { createJmap } from "../fakes/fake-jmap.mjs";
 
 const PAGES = join(import.meta.dirname, "pages");
 export const TOKEN = "e2e-token";
 
 export async function startServer() {
+  const jmap = createJmap(); // each server has its own mailbox
   const streams = new Set();
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");

@@ -8,22 +8,11 @@ Browser extension (Chrome and Firefox, Manifest V3) that watches a Fastmail mail
 Load `dist/chrome` via chrome://extensions → Load unpacked, or `dist/firefox/manifest.json` via about:debugging.
 
 ## Test
-Tests use Node's built-in test runner (`node:test`). Playwright is the only dev dependency.
-
     npm install && npx playwright install chromium   # once
-    npm test                                         # build, then run every tests/**/*.test.mjs
+    npm test                                         # build, then run all tests
 
-    node --test tests/sync.test.mjs                  # one file
-    node --test --test-name-pattern "same second"    # matching tests only
-    HEADED=1 node --test tests/e2e/extension.test.mjs   # watch the browser tests run
-
-- Unit tests: `otp`, `detectors` (every detector against `tests/corpus.mjs`), `stream`, `frames`.
-- `sync` and `background` run the real `background.js` with a stubbed `chrome.*`
-  (`tests/harness.mjs`) against a small fake Fastmail (`tests/fake-jmap.mjs`).
-- `fill` runs `fill.js` in headless Chromium (the cases live in `tests/*.test.html`).
-- `e2e/extension` loads the built extension into headless Chromium against the fake Fastmail served
-  over HTTP (`tests/e2e/server.mjs`). It uses a temporary copy of `dist/chrome` that points at the
-  local server and has `<all_urls>` access (what enabling on-page suggestions grants).
+Unit tests, `background.js` in Node, `fill.js` in Chromium, and the built extension in Chromium and
+Firefox. See [tests/README.md](tests/README.md) for the layout and where to add a test.
 
 ## Layout
 - `background.js` – polling, live push stream, notifications, clipboard
@@ -34,6 +23,8 @@ Tests use Node's built-in test runner (`node:test`). Playwright is the only dev 
 - `otp.js` – code masking
 - `fill.js` – finds and fills code fields; `content.js` – optional on-page "Fill code" chip
 - `filltab.js`, `frames.js` – the popup's Fill: which frame of the tab may receive the code
+- `sites.js` – which website a code belongs to (the sender's registrable domain) and whether a page
+  matches; `psl-data.js` is the Public Suffix List, regenerated with `node tools/update-psl.mjs`
 - `popup.*`, `options.*` – popup and setup wizard
 - `manifest.json` (Chrome), `manifest.firefox.json` (Firefox)
 

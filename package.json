@@ -5,13 +5,15 @@
   "type": "module",
   "description": "Browser extension that copies login codes from a Fastmail inbox.",
   "scripts": {
-    "check": "node --check background.js && node --check constants.js && node --check content.js && node --check fill.js && node --check frames.js && node --check filltab.js && node --check jmap.js && node --check offscreen.js && node --check options.js && node --check otp.js && node --check detectors/index.js && node --check detectors/v1.js && node --check detectors/v2.js && node --check popup.js",
-    "test": "npm run build && node --test",
+    "check": "node --check background.js && node --check constants.js && node --check content.js && node --check fill.js && node --check frames.js && node --check filltab.js && node --check sites.js && node --check jmap.js && node --check offscreen.js && node --check options.js && node --check otp.js && node --check detectors/index.js && node --check detectors/v1.js && node --check detectors/v2.js && node --check popup.js",
+    "test": "npm run build && node --test --test-timeout=60000",
     "build": "./build.sh",
-    "lint": "npm run build && npx --yes web-ext lint --source-dir dist/firefox"
+    "lint": "npm run build && web-ext lint --source-dir dist/firefox"
   },
   "license": "MIT",
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "selenium-webdriver": "4.52.0",
+    "web-ext": "10.8.0"
   }
 }

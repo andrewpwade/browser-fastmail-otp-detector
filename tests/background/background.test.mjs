@@ -1,15 +1,19 @@
-// The real background.js against a stubbed chrome.* and the fake Fastmail (tests/harness.mjs).
+// The real background.js against a fake chrome.* and a fake Fastmail (tests/fakes/). Covers what
+// happens to a code after it is found: notifications, offers to pages, claiming, marking used.
 // The tests share one extension instance and run in order.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { jmap, listeners, mail, notifications, page, poll, send, sessionStore, store, utc } from "./harness.mjs";
+import { contentScript, jmap, listeners, mail, notifications, poll, send, sessionStore, localStore, utc } from "../fakes/fake-chrome.mjs";
 
 const min = 60000;
-const tab = { tab: { id: 1 } };
+// A frame on the Storebox website (the sender of the test emails), and one on another site.
+const tab = { tab: { id: 1 }, url: "https://www.storebox.com/verify" };
+const otherSite = { tab: { id: 2 }, url: "https://storebox-login.com/verify" };
 const masked = (offers) => offers.map((o) => [o.from, o.masked]);
 const offers = async () => masked(await send({ type: "latest" }, tab));
-const code = (id) => store.codes.find((c) => c.id === id);
-const fresh = (id, at = Date.now() - 10000) => store.codes.unshift({ id, code: "999000", from: id, subject: "x", at });
+const codes = () => sessionStore.codes;
+const code = (id) => codes().find((c) => c.id === id);
+const fresh = (id, at = Date.now() - 10000) => codes().unshift({ id, code: "999000", from: id, site: "storebox.com", subject: "x", at });
 
 jmap.add(
   mail("m1", "Storebox Authorization Code", "Storebox Authorization Code: 716052", 3 * min),
@@ -17,54 +21,65 @@ jmap.add(
   mail("m3", "Storebox Account Login Notification",
     "Someone just logged in.\n\n203.0.113.45\n\nSecurity Documentation\n\nStorebox, Inc., 2261 Elm Street, STE 40512, San Francisco, CA 94114", 1 * min),
 );
-await import("../background.js");
-store.token = "tok";
-store.detector = process.env.DETECTOR; // undefined: the default detector
-store.since = utc(10 * min);
+localStore.codes = [{ id: "stale", code: "000111" }]; // left on disk by an older version
+await import("../../background.js");
+localStore.token = "tok";
+localStore.detector = process.env.DETECTOR; // undefined: the default detector
+localStore.since = utc(10 * min);
 
 test("a poll finds one code: the resend and the login notice don't count", async () => {
   await poll();
-  assert.match(store.status, /^OK/);
-  assert.deepEqual(store.codes.map((c) => c.code), ["716052"]);
+  assert.match(localStore.status, /^OK/);
+  assert.deepEqual(codes().map((c) => [c.code, c.site]), [["716052", "storebox.com"]]);
+  assert.equal(localStore.codes, undefined, "codes are removed from, and never written to, disk (local storage)");
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].title, "Login code: ••••52");
 });
 
-test("pages are offered fresh codes, masked, newest first", async () => {
+// --- Offering codes to pages -------------------------------------------------------------------
+
+test("pages are offered fresh codes for their site, masked, newest first", async () => {
   const one = await send({ type: "latest" }, tab);
   assert.deepEqual(masked(one), [["Storebox", "••••52"]]);
   assert.ok(!JSON.stringify(one).includes("716052"), "the full code must not be sent to pages");
 
-  store.codes.unshift({ id: "acme", code: "111222", from: "Acme", subject: "x", at: Date.now() - 30000 });
-  store.codes.push({ id: "old", code: "333444", from: "Slow", subject: "x", at: Date.now() - 6 * min });
-  assert.deepEqual(await offers(), [["Acme", "••••22"], ["Storebox", "••••52"]], "codes over 5 minutes old aren't offered");
+  codes().unshift({ id: "eu", code: "111222", from: "Storebox EU", site: "storebox.com", subject: "x", at: Date.now() - 30000 });
+  codes().push({ id: "old", code: "333444", from: "Slow", site: "storebox.com", subject: "x", at: Date.now() - 6 * min });
+  assert.deepEqual(await offers(), [["Storebox EU", "••••22"], ["Storebox", "••••52"]], "codes over 5 minutes old aren't offered");
+});
+
+test("a page on another site is offered nothing and can claim nothing", async () => {
+  assert.deepEqual(await send({ type: "latest" }, otherSite), []);
+  assert.equal(await send({ type: "claim", id: "eu" }, otherSite), null);
+  assert.deepEqual(await send({ type: "latest" }, { tab: { id: 3 } }), [], "no frame URL: nothing");
 });
 
 test("claiming hands out the code without spending it", async () => {
-  assert.deepEqual(await send({ type: "claim", id: "acme" }, tab), { code: "111222" });
-  assert.equal(code("acme").used, undefined);
+  assert.deepEqual(await send({ type: "claim", id: "eu" }, tab), { code: "111222" });
+  assert.equal(code("eu").used, undefined);
   assert.equal(await send({ type: "claim", id: "old" }, tab), null, "too old to claim");
 });
 
 test("a page confirming the code marks it used, and it is no longer offered", async () => {
   await send({ type: "confirmed", id: "m1" }, tab);
   assert.equal(code("m1").used, true);
-  assert.deepEqual(await offers(), [["Acme", "••••22"]]);
+  assert.deepEqual(await offers(), [["Storebox EU", "••••22"]]);
   assert.equal(await send({ type: "claim", id: "m1" }, tab), null);
 });
 
 test("only pages (tabs) may confirm", () => {
-  assert.notEqual(listeners.message({ type: "confirmed", id: "acme" }, {}, () => {}), true); // ignored: no async reply
-  assert.equal(code("acme").used, undefined);
+  assert.notEqual(listeners.message({ type: "confirmed", id: "eu" }, {}, () => {}), true); // ignored: no async reply
+  assert.equal(code("eu").used, undefined);
 });
 
+// --- Marking a code used after a full page navigation -----------------------------------------
 // After a submit the tab navigates; once the next page has loaded, the background decides.
 async function navigate({ id, from = "https://x.test/verify", to = "https://x.test/home", hasField = false, loadingAfterMs = 500, completeAfterMs = 2000, tabId = 7, submit = true }) {
   fresh(id);
   if (submit) await send({ type: "submitted", id, url: from }, { tab: { id: tabId } });
   const age = (ms) => { if (sessionStore.pending?.[tabId]) sessionStore.pending[tabId].at -= ms; };
   age(loadingAfterMs);
-  page.hasCodeField = hasField;
+  contentScript.hasCodeField = hasField;
   await listeners.updated(tabId, { status: "loading" }, {});
   age(completeAfterMs);
   await listeners.updated(tabId, { status: "complete" }, to ? { url: to } : {});
@@ -83,7 +98,7 @@ test("navigation without a submit: not used", async () => assert.equal(await nav
 test("submit, loading and complete arriving together (a fast page): used", async () => {
   // Chrome doesn't wait for one listener to finish before firing the next. Found by the browser tests.
   fresh("n9");
-  page.hasCodeField = false;
+  contentScript.hasCodeField = false;
   await Promise.all([
     send({ type: "submitted", id: "n9", url: "https://x.test/verify" }, { tab: { id: 8 } }),
     listeners.updated(8, { status: "loading" }, {}),

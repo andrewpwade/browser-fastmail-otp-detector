@@ -2,22 +2,22 @@
 // looked at exactly once, however much arrives between polls or within the same second.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { codeMail } from "./fake-jmap.mjs";
-import { jmap, mail, notifications, poll, store, utc } from "./harness.mjs";
+import { codeMail } from "../fakes/fake-jmap.mjs";
+import { jmap, mail, notifications, poll, sessionStore, localStore, utc } from "../fakes/fake-chrome.mjs";
 
-await import("../background.js");
-store.token = "tok";
-store.since = utc(10 * 60000);
+await import("../../background.js");
+localStore.token = "tok";
+localStore.since = utc(10 * 60000);
 
 const min = 60000;
-const codeIds = () => store.codes.map((c) => c.id);
+const codeIds = () => sessionStore.codes.map((c) => c.id);
 const methods = () => jmap.calls.map(([name]) => name);
 
 test("the first poll remembers the server's mail state", async () => {
   await poll();
-  assert.ok(store.status.startsWith("OK"), store.status);
-  assert.equal(store.emailState, "0");
-  assert.deepEqual(store.codes, []);
+  assert.ok(localStore.status.startsWith("OK"), localStore.status);
+  assert.equal(localStore.emailState, "0");
+  assert.deepEqual(sessionStore.codes, []);
 });
 
 test("an email in the same second as the last one is not missed", async () => {
@@ -60,7 +60,7 @@ test("more changes than one page are paged through", async () => {
   jmap.calls.length = 0;
   await poll();
   assert.ok(methods().filter((x) => x === "Email/changes").length >= 2, "changes are paged");
-  assert.equal(store.emailState, jmap.state, "state catches up to the server");
+  assert.equal(localStore.emailState, jmap.state, "state catches up to the server");
   assert.ok(codeIds().includes(last.m.id), "a code after a long run of other mail is found");
 });
 
@@ -69,9 +69,9 @@ test("when the server can't calculate changes, a date query catches up", async (
   const lost = codeMail(2000);
   jmap.add(lost.m);
   await poll();
-  assert.ok(store.status.startsWith("OK"), store.status);
+  assert.ok(localStore.status.startsWith("OK"), localStore.status);
   assert.ok(codeIds().includes(lost.m.id), "falls back to a date query when changes can't be calculated");
-  assert.equal(store.emailState, jmap.state, "and picks up a fresh state");
+  assert.equal(localStore.emailState, jmap.state, "and picks up a fresh state");
   jmap.forgetChanges = false;
   const after = codeMail(1000);
   jmap.add(after.m);
